@@ -224,6 +224,8 @@ class LicitacaoController {
       const { id } = req.params;
       const { valor_final, lucro_final, foi_ganha, motivo_perda, status } = req.body;
 
+      console.log('Dados recebidos:', { id, valor_final, lucro_final, foi_ganha, motivo_perda, status });
+
       // Validações mais rigorosas
       if (!valor_final || isNaN(parseFloat(valor_final))) {
         return res.status(400).json({ error: 'Valor final inválido' });
@@ -245,19 +247,24 @@ class LicitacaoController {
         return res.status(400).json({ error: 'Status inválido para fechamento' });
       }
 
-      const result = await Licitacao.fecharLicitacao(id, {
+      const dadosAtualizacao = {
         valor_final: parseFloat(valor_final),
         lucro_final: parseFloat(lucro_final),
         foi_ganha: Boolean(foi_ganha),
         motivo_perda: foi_ganha ? null : motivo_perda.trim(),
         data_fechamento: new Date(),
         status: 'Finalizada'
-      });
+      };
+
+      console.log('Dados formatados para atualização:', dadosAtualizacao);
+
+      const result = await Licitacao.fecharLicitacao(id, dadosAtualizacao);
 
       if (!result) {
         return res.status(404).json({ error: 'Licitação não encontrada' });
       }
 
+      console.log('Licitação fechada com sucesso:', result);
       res.json(result);
     } catch (error) {
       console.error('Erro ao fechar licitação:', error);
@@ -274,7 +281,7 @@ class LicitacaoController {
       const { status } = req.body;
 
       // Validar status
-      const statusValidos = ['Em Análise', 'Em Andamento', 'Finalizada'];
+      const statusValidos = ['Em Análise', 'Em Andamento', 'Finalizada', 'Cancelada'];
       if (!statusValidos.includes(status)) {
         return res.status(400).json({ 
           error: 'Status inválido. Os status permitidos são: ' + statusValidos.join(', ') 
@@ -282,7 +289,7 @@ class LicitacaoController {
       }
 
       // Verifica se a licitação existe e não está finalizada
-      const licitacaoAtual = await Licitacao.buscarPorId(id);
+      const licitacaoAtual = await Licitacao.findByPk(id);
       
       if (!licitacaoAtual) {
         return res.status(404).json({ error: 'Licitação não encontrada' });
@@ -293,12 +300,12 @@ class LicitacaoController {
       }
 
       // Atualiza o status
-      const result = await Licitacao.atualizar(id, {
-        ...licitacaoAtual,
-        status: status
-      });
+      await licitacaoAtual.update({ status });
+      
+      // Busca a licitação atualizada com as informações do cliente
+      const licitacaoAtualizada = await Licitacao.buscarPorId(id);
 
-      res.json(result);
+      res.json(licitacaoAtualizada);
     } catch (error) {
       console.error('Erro ao atualizar status da licitação:', error);
       res.status(500).json({ error: 'Erro ao atualizar status da licitação' });

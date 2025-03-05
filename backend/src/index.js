@@ -1,6 +1,11 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const { sequelize } = require('./config/database');
+
+// Importar modelos para garantir que os relacionamentos são configurados
+require('./models');
+
 const app = express();
 
 // Middlewares
@@ -11,10 +16,7 @@ app.use(express.json());
 app.use('/uploads', express.static('uploads'));
 
 // Rotas
-app.use('/api/clientes', require('./routes/clientes'));
-app.use('/api/licitacoes', require('./routes/licitacoes'));
-app.use('/api/documentos', require('./routes/documentos'));
-app.use('/api/prazos', require('./routes/prazos'));
+app.use('/api', require('./routes'));
 
 // Tratamento de erros
 app.use((err, req, res, next) => {
@@ -24,6 +26,14 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 3001;
 
-app.listen(PORT, () => {
-  console.log(`Servidor rodando na porta ${PORT}`);
-}); 
+// Sincronizar modelos com o banco de dados
+sequelize.sync()
+  .then(() => {
+    console.log('Modelos sincronizados com o banco de dados');
+    app.listen(PORT, () => {
+      console.log(`Servidor rodando na porta ${PORT}`);
+    });
+  })
+  .catch(err => {
+    console.error('Erro ao sincronizar modelos:', err);
+  }); 

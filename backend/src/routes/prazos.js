@@ -6,6 +6,6 @@ router.get('/', prazoController.index);
 router.post('/', prazoController.store);
 router.put('/:id', prazoController.update);
 router.delete('/:id', prazoController.destroy);
-router.post('/importar', prazoController.importarPrazosLicitacoes);
+router.post('/importar', prazoController.importarPrazos);
 
 module.exports = router; 

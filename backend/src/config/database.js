@@ -1,41 +1,37 @@
 require('dotenv').config();
-
-module.exports = {
-  development: {
-    username: process.env.DB_USER || 'postgres',
-    password: process.env.DB_PASSWORD || 'postgres',
-    database: process.env.DB_NAME || 'licitagora',
-    host: process.env.DB_HOST || 'localhost',
-    port: process.env.DB_PORT || 5432,
-    dialect: 'postgres',
-    dialectOptions: {
-      timezone: 'America/Sao_Paulo',
-    },
-    define: {
-      timestamps: true,
-      underscored: true,
-    },
-  },
-  production: {
-    use_env_variable: 'DATABASE_URL',
-    dialect: 'postgres',
-    dialectOptions: {
-      timezone: 'America/Sao_Paulo',
-      ssl: {
-        require: true,
-        rejectUnauthorized: false,
-      },
-    },
-    define: {
-      timestamps: true,
-      underscored: true,
-    },
-  },
-};
-
-// Pool de conexão para uso direto
+const { Sequelize } = require('sequelize');
 const { Pool } = require('pg');
 
+// Configuração do Sequelize
+const sequelize = new Sequelize({
+  dialect: 'postgres',
+  host: process.env.DB_HOST || 'localhost',
+  port: process.env.DB_PORT || 5432,
+  database: process.env.DB_NAME || 'licitagora',
+  username: process.env.DB_USER || 'postgres',
+  password: process.env.DB_PASSWORD || 'postgres',
+  define: {
+    timestamps: true,
+    underscored: true,
+  },
+  logging: console.log,
+  dialectOptions: {
+    useUTC: false,
+    timezone: '-03:00',
+  },
+  timezone: '-03:00',
+});
+
+// Teste a conexão do Sequelize
+sequelize.authenticate()
+  .then(() => {
+    console.log('Conexão Sequelize estabelecida com sucesso');
+  })
+  .catch(err => {
+    console.error('Erro ao conectar com Sequelize:', err);
+  });
+
+// Configuração do Pool do pg
 const pool = new Pool({
   user: process.env.DB_USER || 'postgres',
   host: process.env.DB_HOST || 'localhost',
@@ -49,16 +45,17 @@ pool.on('error', (err) => {
   console.error('Erro inesperado no pool do banco de dados:', err);
 });
 
-// Teste a conexão ao iniciar
+// Teste a conexão do pool
 pool.connect((err, client, release) => {
   if (err) {
-    console.error('Erro ao conectar ao banco de dados:', err);
+    console.error('Erro ao conectar ao pool:', err);
     return;
   }
-  console.log('Conexão com o banco de dados estabelecida com sucesso');
+  console.log('Conexão pool estabelecida com sucesso');
   release();
 });
 
+// Função helper para queries com pool
 async function query(text, params) {
   const start = Date.now();
   try {
@@ -72,8 +69,9 @@ async function query(text, params) {
   }
 }
 
+// Exportações
 module.exports = {
-  ...module.exports,
-  query,
-  pool,
+  sequelize: sequelize,
+  pool: pool,
+  query: query
 }; 

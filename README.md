@@ -1,37 +1,44 @@
 # Licitagora
 
-Sistema de gerenciamento de licitações e prazos.
+Sistema de gerenciamento de licitações e prazos, desenvolvido para auxiliar empresas no acompanhamento e participação em processos licitatórios.
 
-## Funcionalidades
+## 🚀 Funcionalidades
 
-- Cadastro e gerenciamento de licitações
-- Controle de prazos e deadlines
-- Calendário interativo
-- Importação automática de prazos
-- Interface moderna e responsiva
+- 📋 Cadastro e gerenciamento completo de licitações
+- ⏰ Controle de prazos e deadlines
+- 📅 Calendário interativo com visualização de eventos
+- 🔄 Importação automática de prazos das licitações
+- 📱 Interface moderna e responsiva
+- 📄 Gestão de documentos e requisitos
+- 📊 Acompanhamento de status e resultados
 
-## Tecnologias Utilizadas
+## 🛠️ Tecnologias Utilizadas
 
 ### Backend
 - Node.js
 - Express
 - PostgreSQL
-- Sequelize
+- Sequelize ORM
+- date-fns
+- JWT para autenticação
+- Multer para upload de arquivos
 
 ### Frontend
-- React
+- React com Vite
 - Material-UI (MUI)
 - React Big Calendar
-- Day.js
 - Axios
+- React Router DOM
+- Context API para gerenciamento de estado
 
-## Pré-requisitos
+## 📋 Pré-requisitos
 
 - Node.js (versão 14 ou superior)
 - PostgreSQL (versão 12 ou superior)
 - NPM ou Yarn
+- Git
 
-## Configuração do Ambiente
+## 🔧 Configuração do Ambiente
 
 1. Clone o repositório:
 ```bash
@@ -47,51 +54,93 @@ cp .env.example .env
 # Configure as variáveis de ambiente no arquivo .env
 ```
 
-3. Configure o frontend:
+3. Configure o banco de dados:
 ```bash
-cd frontend
-npm install
+# Execute o script SQL inicial
+psql -U seu_usuario -d licitagora -f dados_exemplo.sql
 ```
 
-4. Inicie o backend:
+4. Configure o frontend:
+```bash
+cd frontend
+npm install --legacy-peer-deps
+cp .env.example .env
+# Configure as variáveis de ambiente no arquivo .env
+```
+
+5. Inicie o backend:
 ```bash
 cd backend
 npm run dev
 ```
 
-5. Inicie o frontend:
+6. Inicie o frontend:
 ```bash
 cd frontend
-npm start
+npm run dev
 ```
 
-## Estrutura do Projeto
+## 📁 Estrutura do Projeto
 
 ```
 licitagora/
 ├── backend/
 │   ├── src/
-│   │   ├── controllers/
-│   │   ├── routes/
-│   │   ├── config/
-│   │   └── index.js
+│   │   ├── controllers/    # Controladores da aplicação
+│   │   ├── models/         # Modelos do Sequelize
+│   │   ├── routes/         # Rotas da API
+│   │   ├── config/         # Configurações
+│   │   ├── middlewares/    # Middlewares
+│   │   └── utils/          # Utilitários
 │   └── package.json
 └── frontend/
     ├── src/
-    │   ├── components/
-    │   ├── pages/
-    │   └── App.js
+    │   ├── components/     # Componentes React
+    │   ├── pages/          # Páginas da aplicação
+    │   ├── services/       # Serviços e API
+    │   ├── contexts/       # Contextos React
+    │   └── utils/          # Utilitários
     └── package.json
 ```
 
-## Contribuição
+## 🤝 Contribuição
 
 1. Faça o fork do projeto
-2. Crie uma branch para sua feature (`git checkout -b feature/nova-feature`)
-3. Faça commit das suas alterações (`git commit -m 'Adiciona nova feature'`)
-4. Faça push para a branch (`git push origin feature/nova-feature`)
+2. Crie uma branch para sua feature:
+```bash
+git checkout -b feature/nova-feature
+```
+3. Faça commit das suas alterações:
+```bash
+git commit -m 'feat: Adiciona nova feature'
+```
+4. Faça push para a branch:
+```bash
+git push origin feature/nova-feature
+```
 5. Abra um Pull Request
 
-## Licença
+### Padrões de Commit
 
-Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para mais detalhes. 
+Utilizamos o padrão Conventional Commits:
+- `feat`: Nova funcionalidade
+- `fix`: Correção de bug
+- `docs`: Atualização de documentação
+- `style`: Mudanças que não afetam o código
+- `refactor`: Refatoração de código
+- `test`: Adição ou modificação de testes
+- `chore`: Mudanças no processo de build ou ferramentas auxiliares
+
+## 📝 Licença
+
+Este projeto está sob a licença MIT. Veja o arquivo [LICENSE](LICENSE) para mais detalhes.
+
+## 👥 Autores
+
+* **Seu Nome** - *Trabalho Inicial* - [seu-usuario](https://github.com/seu-usuario)
+
+## 📮 Contato
+
+Para sugestões, dúvidas ou contribuições, entre em contato através de:
+- Email: seu-email@exemplo.com
+- Issues do GitHub 

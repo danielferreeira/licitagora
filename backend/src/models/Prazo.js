@@ -1,6 +1,5 @@
 const { DataTypes } = require('sequelize');
-const sequelize = require('../config/database');
-const Licitacao = require('./Licitacao');
+const { sequelize } = require('../config/database');
 
 const Prazo = sequelize.define('Prazo', {
   id: {
@@ -31,12 +30,7 @@ const Prazo = sequelize.define('Prazo', {
 }, {
   tableName: 'prazos',
   timestamps: true,
-});
-
-// Relacionamento com Licitação
-Prazo.belongsTo(Licitacao, {
-  foreignKey: 'licitacao_id',
-  as: 'licitacao',
+  underscored: true,
 });
 
 module.exports = Prazo; 

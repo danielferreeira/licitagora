@@ -23,19 +23,26 @@ import {
   Edit as EditIcon,
   Delete as DeleteIcon,
 } from '@mui/icons-material';
-import { Calendar, dayjsLocalizer } from 'react-big-calendar';
-import dayjs from 'dayjs';
-import customParseFormat from 'dayjs/plugin/customParseFormat';
+import { Calendar, dateFnsLocalizer } from 'react-big-calendar';
+import { format, parse, startOfWeek, getDay } from 'date-fns';
+import ptBR from 'date-fns/locale/pt-BR';
 import 'react-big-calendar/lib/css/react-big-calendar.css';
-import 'dayjs/locale/pt-br';
 import { toast } from 'react-toastify';
 import axios from 'axios';
 
-dayjs.extend(customParseFormat);
-dayjs.locale('pt-br');
-
 const API_URL = 'http://localhost:3001/api';
-const localizer = dayjsLocalizer(dayjs);
+
+const locales = {
+  'pt-BR': ptBR,
+};
+
+const localizer = dateFnsLocalizer({
+  format,
+  parse,
+  startOfWeek,
+  getDay,
+  locales,
+});
 
 const messages = {
   allDay: 'Dia inteiro',
@@ -59,10 +66,12 @@ export default function Prazos() {
   const [openDialog, setOpenDialog] = useState(false);
   const [novoEvento, setNovoEvento] = useState({
     titulo: '',
-    data_prazo: dayjs().format('YYYY-MM-DDTHH:mm'),
+    data_prazo: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
     observacoes: '',
     licitacao_id: '',
   });
+  const [view, setView] = useState('month');
+  const [date, setDate] = useState(new Date());
 
   useEffect(() => {
     carregarDados();
@@ -70,48 +79,98 @@ export default function Prazos() {
 
   const carregarDados = async () => {
     try {
-      // Carregar licitações
-      const resLicitacoes = await axios.get(`${API_URL}/licitacoes`);
-      const licitacoesAtivas = resLicitacoes.data.filter(
-        licitacao => licitacao.status === 'Em Andamento' && licitacao.data_fim
-      );
-      setLicitacoes(licitacoesAtivas);
-
       // Carregar prazos
       const resPrazos = await axios.get(`${API_URL}/prazos`);
-      const eventosPrazos = resPrazos.data.map(prazo => ({
-        id: prazo.id,
-        title: prazo.titulo,
-        start: dayjs(prazo.data_prazo).toDate(),
-        end: dayjs(prazo.data_prazo).toDate(),
-        observacoes: prazo.observacoes,
-        licitacao_id: prazo.licitacao_id,
-        licitacao_numero: prazo.licitacao_numero,
-        licitacao_orgao: prazo.licitacao_orgao,
-        tipo: 'prazo'
-      }));
+      console.log('Dados recebidos do servidor:', resPrazos.data);
+      
+      // Criar eventos a partir dos prazos
+      const eventos = resPrazos.data
+        .filter(prazo => prazo.licitacao_data_fim) // Filtrar apenas prazos com data_fim
+        .map(prazo => {
+          try {
+            const dataString = prazo.licitacao_data_fim;
+            console.log('Processando data:', {
+              licitacao: prazo.licitacao_numero,
+              dataOriginal: dataString
+            });
 
-      // Adicionar datas de licitações
-      const eventosLicitacoes = licitacoesAtivas.map(licitacao => ({
-        id: `lic-${licitacao.id}`,
-        title: `Encerramento da Licitação: ${licitacao.numero} - ${licitacao.orgao}`,
-        start: dayjs(licitacao.data_fim).toDate(),
-        end: dayjs(licitacao.data_fim).toDate(),
-        tipo: 'licitacao',
-        licitacao_id: licitacao.id
-      }));
+            // Criar objeto Date diretamente da string ISO
+            const data = new Date(dataString);
+            
+            // Verificar se a data é válida
+            if (isNaN(data.getTime())) {
+              console.error('Data inválida:', {
+                licitacao: prazo.licitacao_numero,
+                data: dataString
+              });
+              return null;
+            }
 
-      setEventos([...eventosPrazos, ...eventosLicitacoes]);
+            // Criar evento para o calendário
+            const evento = {
+              id: prazo.id,
+              title: `${prazo.licitacao_numero} - ${prazo.licitacao_orgao}`,
+              start: data,
+              end: data,
+              allDay: true,
+              resource: {
+                licitacao_id: prazo.licitacao_id,
+                licitacao_numero: prazo.licitacao_numero,
+                licitacao_orgao: prazo.licitacao_orgao,
+                licitacao_objeto: prazo.licitacao_objeto,
+                licitacao_status: prazo.licitacao_status,
+                observacoes: prazo.observacoes
+              }
+            };
+
+            console.log('Evento criado:', {
+              titulo: evento.title,
+              data: format(evento.start, 'dd/MM/yyyy'),
+              status: evento.resource.licitacao_status,
+              start: evento.start.toISOString()
+            });
+
+            return evento;
+          } catch (err) {
+            console.error('Erro ao processar evento:', {
+              prazo,
+              erro: err.message
+            });
+            return null;
+          }
+        })
+        .filter(Boolean); // Remover eventos nulos
+
+      console.log('Total de eventos:', eventos.length);
+      console.log('Lista de eventos:', eventos.map(e => ({
+        titulo: e.title,
+        data: format(e.start, 'dd/MM/yyyy'),
+        status: e.resource.licitacao_status
+      })));
+
+      // Definir os eventos no estado
+      setEventos(eventos);
+      
+      // Atualizar a data do calendário para o mês atual
+      setDate(new Date());
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
       toast.error('Erro ao carregar dados');
     }
   };
 
+  const handleNavigate = (newDate) => {
+    setDate(newDate);
+  };
+
+  const handleViewChange = (newView) => {
+    setView(newView);
+  };
+
   const handleNovoEvento = () => {
     setNovoEvento({
       titulo: '',
-      data_prazo: dayjs().format('YYYY-MM-DDTHH:mm'),
+      data_prazo: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
       observacoes: '',
       licitacao_id: '',
     });
@@ -125,7 +184,7 @@ export default function Prazos() {
   const handleSelectSlot = ({ start }) => {
     setNovoEvento({
       titulo: '',
-      data_prazo: dayjs(start).format('YYYY-MM-DDTHH:mm'),
+      data_prazo: format(start, "yyyy-MM-dd'T'HH:mm"),
       observacoes: '',
       licitacao_id: '',
     });
@@ -133,22 +192,23 @@ export default function Prazos() {
   };
 
   const handleSelectEvent = (event) => {
-    if (event.tipo === 'prazo') {
-      setNovoEvento({
-        id: event.id,
-        titulo: event.title,
-        data_prazo: dayjs(event.start).format('YYYY-MM-DDTHH:mm'),
-        observacoes: event.observacoes,
-        licitacao_id: event.licitacao_id || '',
-      });
-      setOpenDialog(true);
-    }
+    // Mostrar informações da licitação
+    toast.info(
+      <div>
+        <strong>{event.title}</strong>
+        <div>Órgão: {event.resource.licitacao_orgao}</div>
+        {event.resource.licitacao_objeto && <div>Objeto: {event.resource.licitacao_objeto}</div>}
+        <div>Status: {event.resource.licitacao_status}</div>
+        {event.resource.observacoes && <div>{event.resource.observacoes}</div>}
+      </div>,
+      { autoClose: 8000 }
+    );
   };
 
   const handleSalvarEvento = async () => {
     try {
       // Converter a data para o formato aceito pelo PostgreSQL
-      const dataPrazo = dayjs(novoEvento.data_prazo).format('YYYY-MM-DD HH:mm:ss');
+      const dataPrazo = format(new Date(novoEvento.data_prazo), "yyyy-MM-dd HH:mm:ss");
       
       if (novoEvento.id) {
         // Atualizar prazo existente
@@ -197,27 +257,46 @@ export default function Prazos() {
   };
 
   const eventStyleGetter = (event) => {
-    const style = {
-      borderRadius: '4px',
-      opacity: 0.8,
-      color: 'white',
-      border: '0',
-      display: 'block',
-      textAlign: 'center',
-      padding: '4px'
-    };
+    let backgroundColor = '#1976d2'; // Azul principal
+    let fontWeight = 'normal';
+    let borderLeft = '4px solid #1565c0';
+    let opacity = 1;
 
-    // Vermelho para prazos vencidos, azul para futuros
-    if (event.tipo === 'prazo') {
-      const isVencido = new Date(event.start) < new Date();
-      style.backgroundColor = isVencido ? '#f44336' : '#2196f3';
-    } 
-    // Verde para datas de licitação
-    else if (event.tipo === 'licitacao') {
-      style.backgroundColor = '#4caf50';
+    // Ajustar estilo baseado no status
+    if (event.resource.licitacao_status === 'Em Análise') {
+      backgroundColor = '#2196f3'; // Azul mais claro
+      borderLeft = '4px solid #1565c0';
+    } else if (event.resource.licitacao_status === 'Em Andamento') {
+      backgroundColor = '#ff9800'; // Laranja
+      borderLeft = '4px solid #f57c00';
+      fontWeight = 'bold';
+    } else if (event.resource.licitacao_status === 'Finalizada') {
+      backgroundColor = '#4caf50'; // Verde
+      borderLeft = '4px solid #2e7d32';
+    } else if (event.resource.licitacao_status === 'Cancelada') {
+      backgroundColor = '#9e9e9e'; // Cinza
+      borderLeft = '4px solid #616161';
+      opacity = 0.7;
     }
 
-    return { style };
+    return {
+      style: {
+        backgroundColor,
+        color: 'white',
+        fontWeight,
+        borderRadius: '3px',
+        borderLeft,
+        opacity,
+        border: 'none',
+        display: 'block',
+        padding: '2px 5px',
+        margin: '1px 0',
+        minHeight: '24px',
+        overflow: 'hidden',
+        cursor: 'pointer',
+        boxShadow: '0 1px 2px rgba(0,0,0,0.2)'
+      }
+    };
   };
 
   const handleImportarPrazos = async () => {
@@ -235,110 +314,85 @@ export default function Prazos() {
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', mb: 3 }}>
         <Typography variant="h4" sx={{ color: 'primary.main' }}>
-          Prazos
+          Calendário de Licitações
         </Typography>
         <Box sx={{ display: 'flex', gap: 2 }}>
           <Button
-            variant="outlined"
+            variant="contained"
             onClick={handleImportarPrazos}
           >
             Importar Prazos das Licitações
-          </Button>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={handleNovoEvento}
-          >
-            Novo Prazo
           </Button>
         </Box>
       </Box>
 
       <Grid container spacing={3}>
-        <Grid item xs={12} md={4}>
-          <Paper sx={{ p: 2, height: 'calc(100vh - 200px)', overflow: 'auto' }}>
-            <Typography variant="h6" gutterBottom>
-              Prazos Próximos
-            </Typography>
-            {eventos.length === 0 ? (
-              <Typography variant="body2" color="text.secondary" align="center" sx={{ mt: 3 }}>
-                Nenhum prazo cadastrado
-              </Typography>
-            ) : (
-              <List>
-                {eventos
-                  .filter(evento => evento.tipo === 'prazo' && dayjs(evento.start).isAfter(dayjs()))
-                  .sort((a, b) => dayjs(a.start).diff(dayjs(b.start)))
-                  .map(evento => (
-                    <ListItem
-                      key={evento.id}
-                      sx={{
-                        border: '1px solid',
-                        borderColor: 'divider',
-                        borderRadius: 1,
-                        mb: 1,
-                        flexDirection: 'column',
-                        alignItems: 'flex-start'
-                      }}
-                    >
-                      <Box sx={{ width: '100%', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                        <Typography variant="subtitle1" sx={{ fontWeight: 500 }}>
-                          {evento.title}
-                        </Typography>
-                      </Box>
-                      <Box sx={{ mt: 1 }}>
-                        <Typography variant="body2" color="text.secondary">
-                          Data: {dayjs(evento.start).format('DD/MM/YYYY HH:mm')}
-                        </Typography>
-                        {evento.licitacao_numero && (
-                          <Typography variant="body2" color="text.secondary">
-                            Licitação: {evento.licitacao_numero} - {evento.licitacao_orgao}
-                          </Typography>
-                        )}
-                        {evento.observacoes && (
-                          <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                            {evento.observacoes}
-                          </Typography>
-                        )}
-                      </Box>
-                    </ListItem>
-                  ))}
-              </List>
-            )}
-          </Paper>
-        </Grid>
-
-        <Grid item xs={12} md={8}>
+        <Grid item xs={12}>
           <Paper sx={{ p: 2, height: 'calc(100vh - 200px)' }}>
             <Calendar
               localizer={localizer}
               events={eventos}
               startAccessor="start"
               endAccessor="end"
-              style={{ height: 'calc(100% - 40px)' }}
-              messages={messages}
-              eventPropGetter={eventStyleGetter}
-              views={['month', 'week', 'day']}
+              style={{ height: 'calc(100vh - 100px)' }}
+              date={date}
+              onNavigate={handleNavigate}
               defaultView="month"
+              view={view}
+              onView={handleViewChange}
+              views={['month', 'week', 'day']}
+              popup
               selectable
-              onSelectSlot={handleSelectSlot}
+              tooltipAccessor={event => `${event.resource.licitacao_numero} - ${event.resource.licitacao_orgao}\n${event.resource.licitacao_objeto || ''}`}
+              eventPropGetter={eventStyleGetter}
+              messages={messages}
+              formats={{
+                eventTimeRangeFormat: () => '',
+                timeGutterFormat: (date, culture, localizer) =>
+                  localizer.format(date, 'HH:mm', culture),
+                dayFormat: 'dd/MM',
+                monthHeaderFormat: (date, culture, localizer) =>
+                  localizer.format(date, 'MMMM yyyy', culture),
+                dayRangeHeaderFormat: ({ start, end }, culture, localizer) =>
+                  `${localizer.format(start, 'dd/MM', culture)} - ${localizer.format(end, 'dd/MM', culture)}`,
+                eventTimeFormat: () => ''
+              }}
+              components={{
+                toolbar: CustomToolbar,
+                event: props => {
+                  const style = eventStyleGetter(props.event).style;
+                  return (
+                    <div 
+                      title={`${props.event.resource.licitacao_numero} - ${props.event.resource.licitacao_orgao}`} 
+                      style={{ 
+                        ...style,
+                        height: '100%', 
+                        padding: '2px 5px',
+                        overflow: 'hidden'
+                      }}
+                    >
+                      <div style={{ fontWeight: 'bold' }}>
+                        {props.event.resource.licitacao_numero}
+                      </div>
+                      <div style={{ 
+                        fontSize: '0.85em', 
+                        whiteSpace: 'nowrap',
+                        overflow: 'hidden',
+                        textOverflow: 'ellipsis'
+                      }}>
+                        {props.event.resource.licitacao_orgao}
+                      </div>
+                    </div>
+                  );
+                }
+              }}
               onSelectEvent={handleSelectEvent}
-              tooltipAccessor={event => event.title}
+              onSelectSlot={handleSelectSlot}
+              dayLayoutAlgorithm="no-overlap"
             />
           </Paper>
         </Grid>
       </Grid>
-
-      <Box sx={{ mt: 4 }}>
-        <Typography variant="h6" gutterBottom>
-          Linha do Tempo
-        </Typography>
-        <Paper sx={{ p: 2 }}>
-          <Typography variant="body2" color="text.secondary" align="center">
-            Em desenvolvimento...
-          </Typography>
-        </Paper>
-      </Box>
 
       <Dialog open={openDialog} onClose={handleFecharDialog} maxWidth="sm" fullWidth>
         <DialogTitle>{novoEvento.id ? 'Editar Prazo' : 'Novo Prazo'}</DialogTitle>
@@ -410,4 +464,72 @@ export default function Prazos() {
       </Dialog>
     </Box>
   );
-} 
+}
+
+const CustomToolbar = (toolbar) => {
+  const goToBack = () => {
+    toolbar.onNavigate('PREV');
+  };
+
+  const goToNext = () => {
+    toolbar.onNavigate('NEXT');
+  };
+
+  const goToCurrent = () => {
+    toolbar.onNavigate('TODAY');
+  };
+
+  return (
+    <Box sx={{ 
+      display: 'flex', 
+      justifyContent: 'space-between', 
+      alignItems: 'center',
+      mb: 2,
+      '& button': {
+        textTransform: 'none',
+        mx: 0.5
+      }
+    }}>
+      <Box>
+        <Button variant="outlined" onClick={goToCurrent}>
+          Hoje
+        </Button>
+        <Button variant="outlined" onClick={goToBack}>
+          Anterior
+        </Button>
+        <Button variant="outlined" onClick={goToNext}>
+          Próximo
+        </Button>
+      </Box>
+      <Typography variant="h6">
+        {format(toolbar.date, 'MMMM yyyy', { locale: ptBR })}
+      </Typography>
+      <Box>
+        <Button 
+          variant={toolbar.view === 'month' ? 'contained' : 'outlined'}
+          onClick={() => toolbar.onView('month')}
+        >
+          Mês
+        </Button>
+        <Button 
+          variant={toolbar.view === 'week' ? 'contained' : 'outlined'}
+          onClick={() => toolbar.onView('week')}
+        >
+          Semana
+        </Button>
+        <Button 
+          variant={toolbar.view === 'day' ? 'contained' : 'outlined'}
+          onClick={() => toolbar.onView('day')}
+        >
+          Dia
+        </Button>
+        <Button 
+          variant={toolbar.view === 'agenda' ? 'contained' : 'outlined'}
+          onClick={() => toolbar.onView('agenda')}
+        >
+          Agenda
+        </Button>
+      </Box>
+    </Box>
+  );
+}; 
