@@ -2,19 +2,19 @@ const express = require('express');
 const router = express.Router();
 const clienteController = require('../controllers/clienteController');
 
-// Listar todos os clientes
+// GET - Listar todos os clientes com filtros opcionais
 router.get('/', clienteController.listar);
 
-// Buscar um cliente específico
+// GET - Buscar um cliente específico
 router.get('/:id', clienteController.buscarPorId);
 
-// Criar um novo cliente
+// POST - Criar novo cliente
 router.post('/', clienteController.criar);
 
-// Atualizar um cliente
+// PUT - Atualizar cliente
 router.put('/:id', clienteController.atualizar);
 
-// Deletar um cliente
-router.delete('/:id', clienteController.deletar);
+// DELETE - Remover cliente
+router.delete('/:id', clienteController.excluir);
 
 module.exports = router; 

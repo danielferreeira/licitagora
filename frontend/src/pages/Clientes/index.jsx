@@ -18,13 +18,22 @@ import {
   CardContent,
   Grid,
   Chip,
-  Tooltip
+  Tooltip,
+  TextField,
+  Collapse,
+  FormControl,
+  InputLabel,
+  Select,
+  MenuItem,
 } from '@mui/material';
 import { 
   Add as AddIcon, 
   Edit as EditIcon, 
   Delete as DeleteIcon,
-  Visibility as VisibilityIcon
+  Visibility as VisibilityIcon,
+  FilterList as FilterListIcon,
+  Search as SearchIcon,
+  Clear as ClearIcon,
 } from '@mui/icons-material';
 import axios from 'axios';
 import NovoClienteDialog from '../../components/NovoClienteDialog';
@@ -34,18 +43,52 @@ import { toast } from 'react-toastify';
 
 const API_URL = 'http://localhost:3001/api';
 
+const estados = [
+  'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG',
+  'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'
+];
+
+const ramosAtividade = [
+  'Construção Civil',
+  'Tecnologia',
+  'Saúde',
+  'Educação',
+  'Alimentação',
+  'Transporte',
+  'Varejo',
+  'Serviços',
+  'Indústria',
+  'Outros',
+];
+
 export default function Clientes() {
   const [clientes, setClientes] = useState([]);
   const [openNovo, setOpenNovo] = useState(false);
   const [openEditar, setOpenEditar] = useState(false);
   const [openVisualizar, setOpenVisualizar] = useState(false);
   const [clienteSelecionado, setClienteSelecionado] = useState(null);
+  const [showFilters, setShowFilters] = useState(false);
+  const [filtros, setFiltros] = useState({
+    razao_social: '',
+    cnpj: '',
+    cidade: '',
+    estado: '',
+    ramo_atividade: '',
+  });
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   const carregarClientes = async () => {
     try {
-      const response = await axios.get(`${API_URL}/clientes`);
+      const params = new URLSearchParams();
+      
+      if (filtros.razao_social) params.append('razao_social', filtros.razao_social);
+      if (filtros.cnpj) params.append('cnpj', filtros.cnpj);
+      if (filtros.cidade) params.append('cidade', filtros.cidade);
+      if (filtros.estado) params.append('estado', filtros.estado);
+      if (filtros.ramo_atividade) params.append('ramo_atividade', filtros.ramo_atividade);
+
+      const response = await axios.get(`${API_URL}/clientes?${params.toString()}`);
       setClientes(response.data);
     } catch (error) {
       console.error('Erro ao carregar clientes:', error);
@@ -79,6 +122,130 @@ export default function Clientes() {
     setClienteSelecionado(cliente);
     setOpenVisualizar(true);
   };
+
+  const handleFiltroChange = (campo, valor) => {
+    setFiltros(prev => ({
+      ...prev,
+      [campo]: valor
+    }));
+  };
+
+  const limparFiltros = () => {
+    setFiltros({
+      razao_social: '',
+      cnpj: '',
+      cidade: '',
+      estado: '',
+      ramo_atividade: '',
+    });
+    carregarClientes();
+  };
+
+  const aplicarFiltros = () => {
+    carregarClientes();
+  };
+
+  const renderFiltros = () => (
+    <Paper 
+      elevation={0} 
+      sx={{ 
+        p: { xs: 2, sm: 3 }, 
+        mb: 3,
+        borderRadius: 2,
+        border: '1px solid',
+        borderColor: 'divider'
+      }}
+    >
+      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
+        <FilterListIcon sx={{ mr: 1, color: 'primary.main' }} />
+        <Typography variant="h6" component="h2" sx={{ color: 'primary.main' }}>
+          Filtros
+        </Typography>
+      </Box>
+
+      <Grid container spacing={2}>
+        <Grid item xs={12} sm={6} md={4}>
+          <TextField
+            fullWidth
+            label="Razão Social"
+            value={filtros.razao_social}
+            onChange={(e) => handleFiltroChange('razao_social', e.target.value)}
+          />
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={4}>
+          <TextField
+            fullWidth
+            label="CNPJ"
+            value={filtros.cnpj}
+            onChange={(e) => handleFiltroChange('cnpj', e.target.value)}
+          />
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={4}>
+          <TextField
+            fullWidth
+            label="Cidade"
+            value={filtros.cidade}
+            onChange={(e) => handleFiltroChange('cidade', e.target.value)}
+          />
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={4}>
+          <FormControl fullWidth>
+            <InputLabel>Estado</InputLabel>
+            <Select
+              value={filtros.estado}
+              label="Estado"
+              onChange={(e) => handleFiltroChange('estado', e.target.value)}
+            >
+              <MenuItem value="">Todos</MenuItem>
+              {estados.map((estado) => (
+                <MenuItem key={estado} value={estado}>
+                  {estado}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={4}>
+          <FormControl fullWidth>
+            <InputLabel>Ramo de Atividade</InputLabel>
+            <Select
+              value={filtros.ramo_atividade}
+              label="Ramo de Atividade"
+              onChange={(e) => handleFiltroChange('ramo_atividade', e.target.value)}
+            >
+              <MenuItem value="">Todos</MenuItem>
+              {ramosAtividade.map((ramo) => (
+                <MenuItem key={ramo} value={ramo}>
+                  {ramo}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Grid>
+
+        <Grid item xs={12} sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
+          <Button
+            variant="outlined"
+            startIcon={<ClearIcon />}
+            onClick={limparFiltros}
+          >
+            Limpar
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<SearchIcon />}
+            onClick={aplicarFiltros}
+          >
+            Filtrar
+          </Button>
+        </Grid>
+      </Grid>
+    </Paper>
+  );
 
   const MobileView = () => (
     <Grid container spacing={2}>
@@ -161,7 +328,7 @@ export default function Clientes() {
       component={Paper} 
       elevation={2}
       sx={{
-        height: 'calc(100vh - 200px)',
+        height: 'calc(100vh - 300px)',
         overflow: 'auto'
       }}
     >
@@ -251,90 +418,70 @@ export default function Clientes() {
   );
 
   return (
-    <Box 
-      sx={{ 
-        height: '100%',
-        width: '100%',
-        p: 3,
-        display: 'flex',
-        flexDirection: 'column',
-        gap: 3
-      }}
-    >
-      <Box 
-        display="flex" 
-        justifyContent="space-between" 
-        alignItems="center"
-        flexDirection={isMobile ? 'column' : 'row'}
-        gap={2}
-      >
-        <Typography 
-          variant="h4" 
-          component="h1"
-          sx={{ 
-            fontWeight: 'bold',
-            color: 'primary.main'
-          }}
-        >
+    <Container maxWidth="xl" sx={{ py: 3 }}>
+      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+        <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
           Clientes
         </Typography>
-        <Button
-          variant="contained"
-          color="primary"
-          startIcon={<AddIcon />}
-          onClick={() => setOpenNovo(true)}
-          fullWidth={isMobile}
-          sx={{
-            borderRadius: 2,
-            textTransform: 'none',
-            px: 3,
-            py: 1,
-            '&:hover': {
-              transform: 'translateY(-2px)',
-              boxShadow: 4
-            },
-            transition: 'all 0.2s ease-in-out'
-          }}
-        >
-          Novo Cliente
-        </Button>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button
+            variant="outlined"
+            onClick={() => setShowFilters(!showFilters)}
+            startIcon={<FilterListIcon />}
+          >
+            {showFilters ? 'Ocultar Filtros' : 'Mostrar Filtros'}
+          </Button>
+          <Button
+            variant="contained"
+            startIcon={<AddIcon />}
+            onClick={() => setOpenNovo(true)}
+          >
+            Novo Cliente
+          </Button>
+        </Box>
       </Box>
 
-      <Box sx={{ flexGrow: 1, width: '100%', overflow: 'hidden' }}>
-        {isMobile ? <MobileView /> : <DesktopView />}
-      </Box>
+      <Collapse in={showFilters}>
+        {renderFiltros()}
+      </Collapse>
+
+      {isMobile ? <MobileView /> : <DesktopView />}
 
       <NovoClienteDialog
         open={openNovo}
         onClose={() => setOpenNovo(false)}
         onSave={() => {
-          carregarClientes();
           setOpenNovo(false);
-        }}
-      />
-
-      <EditarClienteDialog
-        open={openEditar}
-        cliente={clienteSelecionado}
-        onClose={() => {
-          setOpenEditar(false);
-          setClienteSelecionado(null);
-        }}
-        onSave={() => {
           carregarClientes();
-          setOpenEditar(false);
-          setClienteSelecionado(null);
         }}
       />
 
-      <VisualizarClienteDialog
-        open={openVisualizar}
-        cliente={clienteSelecionado}
-        onClose={() => {
-          setOpenVisualizar(false);
-          setClienteSelecionado(null);
-        }}
-      />
-    </Box>
+      {clienteSelecionado && (
+        <>
+          <EditarClienteDialog
+            open={openEditar}
+            cliente={clienteSelecionado}
+            onClose={() => {
+              setOpenEditar(false);
+              setClienteSelecionado(null);
+            }}
+            onSave={() => {
+              setOpenEditar(false);
+              setClienteSelecionado(null);
+              carregarClientes();
+            }}
+          />
+
+          <VisualizarClienteDialog
+            open={openVisualizar}
+            cliente={clienteSelecionado}
+            onClose={() => {
+              setOpenVisualizar(false);
+              setClienteSelecionado(null);
+            }}
+          />
+        </>
+      )}
+    </Container>
   );
 } 

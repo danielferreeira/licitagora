@@ -36,6 +36,7 @@ CREATE TABLE IF NOT EXISTS licitacoes (
   orgao VARCHAR(255) NOT NULL,
   objeto TEXT NOT NULL,
   data_abertura TIMESTAMP NOT NULL,
+  data_fim TIMESTAMP,
   valor_estimado DECIMAL(15,2) NOT NULL,
   modalidade VARCHAR(100) NOT NULL,
   status VARCHAR(50) NOT NULL DEFAULT 'aberta',
@@ -58,4 +59,21 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER update_licitacoes_updated_at
   BEFORE UPDATE ON licitacoes
   FOR EACH ROW
-  EXECUTE FUNCTION update_licitacoes_updated_at(); 
+  EXECUTE FUNCTION update_licitacoes_updated_at();
+
+-- Criar tabela de prazos se não existir
+CREATE TABLE IF NOT EXISTS prazos (
+  id SERIAL PRIMARY KEY,
+  titulo VARCHAR(255) NOT NULL,
+  data_prazo TIMESTAMP NOT NULL,
+  observacoes TEXT,
+  licitacao_id INTEGER REFERENCES licitacoes(id) ON DELETE SET NULL,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Trigger para atualizar o updated_at dos prazos
+CREATE TRIGGER update_prazos_updated_at
+  BEFORE UPDATE ON prazos
+  FOR EACH ROW
+  EXECUTE FUNCTION update_updated_at_column(); 

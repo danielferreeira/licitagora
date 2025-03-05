@@ -1,4 +1,4 @@
-import { Card, CardContent, Box, IconButton } from '@mui/material';
+import { Card, CardContent, Box, IconButton, useTheme, useMediaQuery } from '@mui/material';
 import { ArrowForward as ArrowForwardIcon } from '@mui/icons-material';
 
 export default function CustomCard({
@@ -9,6 +9,9 @@ export default function CustomCard({
   sx = {},
   ...props
 }) {
+  const theme = useTheme();
+  const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+
   return (
     <Card
       elevation={elevation}
@@ -18,16 +21,17 @@ export default function CustomCard({
         flexDirection: 'column',
         position: 'relative',
         overflow: 'hidden',
-        borderRadius: 3,
+        borderRadius: { xs: 2, sm: 3 },
         border: '1px solid',
         borderColor: 'divider',
         backgroundColor: 'background.paper',
         transition: 'all 0.3s ease-in-out',
         '&:hover': {
-          transform: 'translateY(-4px)',
+          transform: isMobile ? 'none' : 'translateY(-4px)',
           boxShadow: '0 8px 24px rgba(0,0,0,0.05)',
           '& .arrow-button': {
             opacity: 1,
+            transform: 'translateX(0)',
           },
         },
         ...sx,
@@ -38,31 +42,42 @@ export default function CustomCard({
         <Box
           sx={{
             position: 'absolute',
-            top: 8,
-            right: 8,
+            top: { xs: 4, sm: 8 },
+            right: { xs: 4, sm: 8 },
             zIndex: 1,
           }}
         >
           <IconButton
-            size="small"
+            size={isMobile ? "medium" : "small"}
             onClick={onClick}
             className="arrow-button"
             sx={{
-              opacity: 0,
-              transition: 'all 0.2s ease-in-out',
+              opacity: isMobile ? 1 : 0,
+              transform: 'translateX(-8px)',
+              transition: 'all 0.3s ease-in-out',
               backgroundColor: 'background.paper',
               boxShadow: '0 2px 8px rgba(0,0,0,0.05)',
               '&:hover': {
                 backgroundColor: 'background.paper',
-                transform: 'translateX(2px)',
+                transform: 'translateX(0)',
               },
             }}
           >
-            <ArrowForwardIcon fontSize="small" />
+            <ArrowForwardIcon fontSize={isMobile ? "medium" : "small"} />
           </IconButton>
         </Box>
       )}
-      <CardContent sx={{ height: '100%', p: 3 }}>{children}</CardContent>
+      <CardContent 
+        sx={{ 
+          height: '100%', 
+          p: { xs: 2, sm: 3 },
+          '&:last-child': {
+            paddingBottom: { xs: 2, sm: 3 }
+          }
+        }}
+      >
+        {children}
+      </CardContent>
     </Card>
   );
 } 

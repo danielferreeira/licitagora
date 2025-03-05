@@ -7,11 +7,14 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Configurar pasta de uploads como estática
+app.use('/uploads', express.static('uploads'));
+
 // Rotas
 app.use('/api/clientes', require('./routes/clientes'));
-// app.use('/api/licitacoes', require('./routes/licitacoes'));
-// app.use('/api/documentos', require('./routes/documentos'));
-// app.use('/api/prazos', require('./routes/prazos'));
+app.use('/api/licitacoes', require('./routes/licitacoes'));
+app.use('/api/documentos', require('./routes/documentos'));
+app.use('/api/prazos', require('./routes/prazos'));
 
 // Tratamento de erros
 app.use((err, req, res, next) => {

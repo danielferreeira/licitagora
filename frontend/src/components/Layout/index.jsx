@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Box,
   Drawer,
@@ -12,6 +12,7 @@ import {
   ListItemIcon,
   ListItemText,
   useTheme,
+  useMediaQuery,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -22,6 +23,7 @@ import {
   Description as DescriptionIcon,
   Schedule as ScheduleIcon,
   Assessment as AssessmentIcon,
+  AssignmentTurnedIn as AssignmentTurnedInIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -32,12 +34,20 @@ export default function Layout({ children }) {
   const theme = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
+  const isMobile = useMediaQuery(theme.breakpoints.down('md'));
+
+  useEffect(() => {
+    if (isMobile) {
+      setOpen(false);
+    }
+  }, [isMobile]);
 
   const menuItems = [
     { text: 'Home', icon: <HomeIcon />, path: '/' },
     { text: 'Clientes', icon: <BusinessIcon />, path: '/clientes' },
     { text: 'Licitações', icon: <GavelIcon />, path: '/licitacoes' },
     { text: 'Documentos', icon: <DescriptionIcon />, path: '/documentos' },
+    { text: 'Fechamento', icon: <AssignmentTurnedInIcon />, path: '/fechamento' },
     { text: 'Prazos', icon: <ScheduleIcon />, path: '/prazos' },
     { text: 'Relatórios', icon: <AssessmentIcon />, path: '/relatorios' },
   ];
@@ -47,49 +57,39 @@ export default function Layout({ children }) {
   };
 
   return (
-    <Box sx={{ display: 'flex', height: '100vh', overflow: 'hidden' }}>
+    <Box 
+      sx={{ 
+        display: 'flex',
+        minHeight: '100vh',
+        width: '100vw',
+        overflow: 'hidden',
+        backgroundColor: theme.palette.background.default
+      }}
+    >
       <AppBar
         position="fixed"
+        elevation={0}
         sx={{
           zIndex: theme.zIndex.drawer + 1,
           transition: 'all 0.3s ease-in-out',
-          ...(open && {
+          backdropFilter: 'blur(8px)',
+          backgroundColor: 'rgba(255, 255, 255, 0.9)',
+          width: '100%',
+          ...(open && !isMobile && {
             marginLeft: drawerWidth,
             width: `calc(100% - ${drawerWidth}px)`,
           }),
         }}
       >
-        <Toolbar sx={{ justifyContent: 'space-between' }}>
-          <Box sx={{ display: 'flex', alignItems: 'center' }}>
-            <IconButton
-              color="inherit"
-              aria-label="toggle drawer"
-              onClick={handleDrawerToggle}
-              edge="start"
-              sx={{ mr: 2 }}
-            >
-              {open ? <ChevronLeftIcon /> : <MenuIcon />}
-            </IconButton>
-            <Typography 
-              variant="h5" 
-              noWrap 
-              component="div"
-              sx={{ 
-                fontWeight: 600,
-                background: 'linear-gradient(45deg, #2563eb 30%, #3b82f6 90%)',
-                WebkitBackgroundClip: 'text',
-                WebkitTextFillColor: 'transparent'
-              }}
-            >
-              LicitÁgora
-            </Typography>
-          </Box>
-        </Toolbar>
       </AppBar>
 
       <Drawer
-        variant="permanent"
+        variant={isMobile ? 'temporary' : 'permanent'}
         open={open}
+        onClose={isMobile ? handleDrawerToggle : undefined}
+        ModalProps={{
+          keepMounted: true,
+        }}
         sx={{
           width: drawerWidth,
           flexShrink: 0,
@@ -100,7 +100,8 @@ export default function Layout({ children }) {
             transition: 'all 0.3s ease-in-out',
             ...(open ? {
               overflowX: 'hidden',
-              backgroundColor: theme.palette.background.default,
+              backgroundColor: theme.palette.background.paper,
+              boxShadow: '0px 2px 8px rgba(0, 0, 0, 0.05)',
             } : {
               width: theme.spacing(7),
               overflowX: 'hidden',
@@ -121,7 +122,10 @@ export default function Layout({ children }) {
               <ListItem
                 button
                 key={item.text}
-                onClick={() => navigate(item.path)}
+                onClick={() => {
+                  navigate(item.path);
+                  if (isMobile) setOpen(false);
+                }}
                 selected={location.pathname === item.path}
                 sx={{
                   borderRadius: 2,
@@ -129,12 +133,12 @@ export default function Layout({ children }) {
                   transition: 'all 0.2s ease-in-out',
                   '&.Mui-selected': {
                     backgroundColor: 'primary.light',
-                    color: 'primary.main',
+                    color: 'primary.contrastText',
                     '&:hover': {
                       backgroundColor: 'primary.light',
                     },
                     '& .MuiListItemIcon-root': {
-                      color: 'primary.main',
+                      color: 'primary.contrastText',
                     },
                   },
                   '&:hover': {
@@ -146,7 +150,7 @@ export default function Layout({ children }) {
                 <ListItemIcon
                   sx={{
                     minWidth: 40,
-                    color: location.pathname === item.path ? 'primary.main' : 'inherit',
+                    color: location.pathname === item.path ? 'primary.contrastText' : 'inherit',
                   }}
                 >
                   {item.icon}
@@ -168,11 +172,14 @@ export default function Layout({ children }) {
         component="main"
         sx={{
           flexGrow: 1,
-          height: '100vh',
+          width: `calc(100% - ${open && !isMobile ? drawerWidth : 0}px)`,
+          minHeight: '100vh',
           overflow: 'hidden auto',
           backgroundColor: 'background.default',
           transition: 'all 0.3s ease-in-out',
           pt: '64px',
+          px: { xs: 2, sm: 3, md: 4 },
+          py: { xs: 2, sm: 3 },
         }}
       >
         {children}

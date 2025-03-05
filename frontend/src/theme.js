@@ -3,15 +3,15 @@ import { createTheme } from '@mui/material/styles';
 const theme = createTheme({
   palette: {
     primary: {
-      main: '#2563eb',
-      light: '#3b82f6',
-      dark: '#1d4ed8',
+      main: '#3B82F6',
+      light: '#60A5FA',
+      dark: '#2563EB',
       contrastText: '#ffffff',
     },
     secondary: {
-      main: '#7c3aed',
-      light: '#8b5cf6',
-      dark: '#6d28d9',
+      main: '#8B5CF6',
+      light: '#A78BFA',
+      dark: '#7C3AED',
       contrastText: '#ffffff',
     },
     error: {
@@ -39,12 +39,12 @@ const theme = createTheme({
       contrastText: '#fff',
     },
     background: {
-      default: '#f8fafc',
-      paper: '#ffffff',
+      default: '#F8FAFC',
+      paper: '#FFFFFF',
     },
     text: {
-      primary: '#1e293b',
-      secondary: '#64748b',
+      primary: '#1E293B',
+      secondary: '#64748B',
     },
     divider: 'rgba(0, 0, 0, 0.06)',
   },
@@ -124,6 +124,7 @@ const theme = createTheme({
           display: 'flex',
           flex: '1 1 auto',
           width: '100%',
+          backgroundColor: '#F8FAFC',
         },
         '#root': {
           display: 'flex',
@@ -164,8 +165,9 @@ const theme = createTheme({
         root: {
           borderRadius: 16,
           border: '1px solid',
-          borderColor: 'divider',
+          borderColor: 'rgba(0, 0, 0, 0.06)',
           boxShadow: '0px 2px 4px rgba(0, 0, 0, 0.02)',
+          backgroundColor: '#FFFFFF',
           '&:hover': {
             boxShadow: '0px 8px 16px rgba(0, 0, 0, 0.04)',
           },
@@ -211,6 +213,7 @@ const theme = createTheme({
     MuiDrawer: {
       styleOverrides: {
         paper: {
+          backgroundColor: '#FFFFFF',
           border: 'none',
           boxShadow: '4px 0px 16px rgba(0, 0, 0, 0.02)',
         },
@@ -223,9 +226,9 @@ const theme = createTheme({
           marginBottom: 4,
           padding: '8px 16px',
           '&.Mui-selected': {
-            backgroundColor: '#f0f7ff',
+            backgroundColor: '#F0F7FF',
             '&:hover': {
-              backgroundColor: '#e6f0fd',
+              backgroundColor: '#E6F0FD',
             },
           },
         },
@@ -241,8 +244,8 @@ const theme = createTheme({
     MuiAppBar: {
       styleOverrides: {
         root: {
-          backgroundColor: '#ffffff',
-          color: '#1e293b',
+          backgroundColor: '#FFFFFF',
+          color: '#1E293B',
           boxShadow: '0px 1px 0px rgba(0, 0, 0, 0.06)',
         },
       },
@@ -253,6 +256,15 @@ const theme = createTheme({
           minHeight: '64px',
         },
       },
+    },
+  },
+  breakpoints: {
+    values: {
+      xs: 0,
+      sm: 600,
+      md: 960,
+      lg: 1280,
+      xl: 1920,
     },
   },
 });

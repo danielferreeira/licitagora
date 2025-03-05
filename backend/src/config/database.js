@@ -1,11 +1,47 @@
+require('dotenv').config();
+
+module.exports = {
+  development: {
+    username: process.env.DB_USER || 'postgres',
+    password: process.env.DB_PASSWORD || 'postgres',
+    database: process.env.DB_NAME || 'licitagora',
+    host: process.env.DB_HOST || 'localhost',
+    port: process.env.DB_PORT || 5432,
+    dialect: 'postgres',
+    dialectOptions: {
+      timezone: 'America/Sao_Paulo',
+    },
+    define: {
+      timestamps: true,
+      underscored: true,
+    },
+  },
+  production: {
+    use_env_variable: 'DATABASE_URL',
+    dialect: 'postgres',
+    dialectOptions: {
+      timezone: 'America/Sao_Paulo',
+      ssl: {
+        require: true,
+        rejectUnauthorized: false,
+      },
+    },
+    define: {
+      timestamps: true,
+      underscored: true,
+    },
+  },
+};
+
+// Pool de conexão para uso direto
 const { Pool } = require('pg');
 
 const pool = new Pool({
-  host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
-  database: process.env.DB_NAME,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
+  user: process.env.DB_USER || 'postgres',
+  host: process.env.DB_HOST || 'localhost',
+  database: process.env.DB_NAME || 'licitagora',
+  password: process.env.DB_PASSWORD || 'postgres',
+  port: process.env.DB_PORT || 5432,
 });
 
 // Evento de erro na pool
@@ -37,6 +73,7 @@ async function query(text, params) {
 }
 
 module.exports = {
+  ...module.exports,
   query,
   pool,
 }; 

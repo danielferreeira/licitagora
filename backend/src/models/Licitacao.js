@@ -1,165 +1,218 @@
-const db = require('../config/db');
+const db = require('../config/database');
+const { Pool } = require('pg');
 
 class Licitacao {
   static async criar(dados) {
-    try {
-      const {
+    const query = `
+      INSERT INTO licitacoes (
         numero,
+        cliente_id,
         orgao,
         objeto,
-        data_abertura,
-        valor_estimado,
         modalidade,
-        status,
-        ramos_atividade,
-        edital_url,
-        cliente_id
-      } = dados;
-
-      const query = `
-        INSERT INTO licitacoes (
-          numero,
-          orgao,
-          objeto,
-          data_abertura,
-          valor_estimado,
-          modalidade,
-          status,
-          ramos_atividade,
-          edital_url,
-          cliente_id
-        ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
-        RETURNING *
-      `;
-
-      const values = [
-        numero,
-        orgao,
-        objeto,
         data_abertura,
+        data_fim,
         valor_estimado,
-        modalidade,
+        lucro_estimado,
         status,
-        ramos_atividade,
-        edital_url,
-        cliente_id
-      ];
+        ramo_atividade,
+        descricao,
+        requisitos,
+        observacoes,
+        created_at,
+        updated_at
+      ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, $12, $13, $14, NOW(), NOW())
+      RETURNING *
+    `;
 
-      const result = await db.query(query, values);
-      return result.rows[0];
-    } catch (error) {
-      throw error;
-    }
+    const values = [
+      dados.numero,
+      dados.cliente_id,
+      dados.orgao,
+      dados.objeto,
+      dados.modalidade,
+      dados.data_abertura,
+      dados.data_fim,
+      dados.valor_estimado,
+      dados.lucro_estimado,
+      dados.status || 'Em Análise',
+      dados.ramo_atividade,
+      dados.descricao,
+      dados.requisitos,
+      dados.observacoes
+    ];
+
+    const result = await db.query(query, values);
+    return result.rows[0];
   }
 
   static async listar(filtros = {}) {
-    try {
-      let query = `
-        SELECT l.*, c.razao_social as cliente_nome
-        FROM licitacoes l
-        LEFT JOIN clientes c ON l.cliente_id = c.id
-        WHERE 1=1
-      `;
-      const values = [];
-      let paramCount = 1;
+    let query = `
+      SELECT l.*, c.razao_social as cliente_nome
+      FROM licitacoes l
+      LEFT JOIN clientes c ON l.cliente_id = c.id
+      WHERE 1=1
+    `;
+    const values = [];
+    let paramCount = 1;
 
-      if (filtros.cliente_id) {
-        query += ` AND l.cliente_id = $${paramCount}`;
-        values.push(filtros.cliente_id);
-        paramCount++;
-      }
-
-      if (filtros.status) {
-        query += ` AND l.status = $${paramCount}`;
-        values.push(filtros.status);
-        paramCount++;
-      }
-
-      if (filtros.ramo_atividade) {
-        query += ` AND $${paramCount} = ANY(l.ramos_atividade)`;
-        values.push(filtros.ramo_atividade);
-        paramCount++;
-      }
-
-      if (filtros.data_inicio) {
-        query += ` AND l.data_abertura >= $${paramCount}`;
-        values.push(filtros.data_inicio);
-        paramCount++;
-      }
-
-      if (filtros.data_fim) {
-        query += ` AND l.data_abertura <= $${paramCount}`;
-        values.push(filtros.data_fim);
-        paramCount++;
-      }
-
-      if (filtros.modalidade) {
-        query += ` AND l.modalidade ILIKE $${paramCount}`;
-        values.push(`%${filtros.modalidade}%`);
-        paramCount++;
-      }
-
-      query += ' ORDER BY l.data_abertura DESC';
-
-      const result = await db.query(query, values);
-      return result.rows;
-    } catch (error) {
-      throw error;
+    if (filtros.cliente_id) {
+      query += ` AND l.cliente_id = $${paramCount}`;
+      values.push(filtros.cliente_id);
+      paramCount++;
     }
+
+    if (filtros.ramo_atividade) {
+      query += ` AND l.ramo_atividade = $${paramCount}`;
+      values.push(filtros.ramo_atividade);
+      paramCount++;
+    }
+
+    if (filtros.modalidade) {
+      query += ` AND l.modalidade = $${paramCount}`;
+      values.push(filtros.modalidade);
+      paramCount++;
+    }
+
+    if (filtros.data_inicio) {
+      query += ` AND l.data_abertura >= $${paramCount}`;
+      values.push(filtros.data_inicio);
+      paramCount++;
+    }
+
+    if (filtros.data_fim) {
+      query += ` AND l.data_abertura <= $${paramCount}`;
+      values.push(filtros.data_fim);
+      paramCount++;
+    }
+
+    if (filtros.valor_min) {
+      query += ` AND l.valor_estimado >= $${paramCount}`;
+      values.push(parseFloat(filtros.valor_min));
+      paramCount++;
+    }
+
+    if (filtros.valor_max) {
+      query += ` AND l.valor_estimado <= $${paramCount}`;
+      values.push(parseFloat(filtros.valor_max));
+      paramCount++;
+    }
+
+    // Ordenação padrão por data de abertura mais recente e depois por número
+    query += ' ORDER BY l.data_abertura DESC, l.numero DESC';
+
+    const result = await db.query(query, values);
+    return result.rows;
   }
 
   static async buscarPorId(id) {
-    try {
-      const query = `
-        SELECT l.*, c.razao_social as cliente_nome
-        FROM licitacoes l
-        LEFT JOIN clientes c ON l.cliente_id = c.id
-        WHERE l.id = $1
-      `;
-      const result = await db.query(query, [id]);
-      return result.rows[0];
-    } catch (error) {
-      throw error;
-    }
+    const query = `
+      SELECT l.*, c.razao_social as cliente_nome
+      FROM licitacoes l
+      LEFT JOIN clientes c ON l.cliente_id = c.id
+      WHERE l.id = $1
+    `;
+    const result = await db.query(query, [id]);
+    return result.rows[0];
   }
 
   static async atualizar(id, dados) {
-    try {
-      const campos = [];
-      const values = [];
-      let paramCount = 1;
+    const query = `
+      UPDATE licitacoes
+      SET 
+        numero = $1,
+        cliente_id = $2,
+        orgao = $3,
+        objeto = $4,
+        modalidade = $5,
+        data_abertura = $6,
+        data_fim = $7,
+        valor_estimado = $8,
+        lucro_estimado = $9,
+        status = $10,
+        ramo_atividade = $11,
+        descricao = $12,
+        requisitos = $13,
+        observacoes = $14,
+        updated_at = NOW()
+      WHERE id = $15
+      RETURNING *
+    `;
 
-      Object.keys(dados).forEach(key => {
-        if (dados[key] !== undefined) {
-          campos.push(`${key} = $${paramCount}`);
-          values.push(dados[key]);
-          paramCount++;
-        }
-      });
+    const values = [
+      dados.numero,
+      dados.cliente_id,
+      dados.orgao,
+      dados.objeto,
+      dados.modalidade,
+      dados.data_abertura,
+      dados.data_fim,
+      dados.valor_estimado,
+      dados.lucro_estimado,
+      dados.status,
+      dados.ramo_atividade,
+      dados.descricao,
+      dados.requisitos,
+      dados.observacoes,
+      id
+    ];
 
-      values.push(id);
-
-      const query = `
-        UPDATE licitacoes
-        SET ${campos.join(', ')}
-        WHERE id = $${paramCount}
-        RETURNING *
-      `;
-
-      const result = await db.query(query, values);
-      return result.rows[0];
-    } catch (error) {
-      throw error;
-    }
+    const result = await db.query(query, values);
+    return result.rows[0];
   }
 
   static async excluir(id) {
+    const query = 'DELETE FROM licitacoes WHERE id = $1 RETURNING *';
+    const result = await db.query(query, [id]);
+    return result.rows[0];
+  }
+
+  static async fecharLicitacao(id, dados) {
     try {
-      const query = 'DELETE FROM licitacoes WHERE id = $1 RETURNING *';
-      const result = await db.query(query, [id]);
+      // Verifica se a licitação existe e não está finalizada
+      const resultVerificacao = await db.query(
+        'SELECT status FROM licitacoes WHERE id = $1',
+        [id]
+      );
+
+      const licitacao = resultVerificacao.rows[0];
+      if (!licitacao) {
+        return null;
+      }
+
+      if (licitacao.status === 'Finalizada') {
+        throw new Error('Esta licitação já está finalizada');
+      }
+
+      // Atualiza os dados de fechamento
+      const result = await db.query(
+        `UPDATE licitacoes 
+         SET valor_final = $1, 
+             lucro_final = $2, 
+             foi_ganha = $3, 
+             motivo_perda = $4,
+             data_fechamento = $5,
+             status = $6,
+             updated_at = CURRENT_TIMESTAMP
+         WHERE id = $7
+         RETURNING *`,
+        [
+          dados.valor_final,
+          dados.lucro_final,
+          dados.foi_ganha,
+          dados.motivo_perda,
+          dados.data_fechamento,
+          dados.status,
+          id
+        ]
+      );
+
       return result.rows[0];
     } catch (error) {
+      console.error('Erro ao fechar licitação:', error);
       throw error;
     }
   }
-} 
+}
+
+module.exports = Licitacao; 
