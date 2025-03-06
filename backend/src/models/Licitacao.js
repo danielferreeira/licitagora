@@ -94,13 +94,23 @@ const Licitacao = sequelize.define('Licitacao', {
   underscored: true,
 });
 
+// Adicionar associação com Cliente
+Licitacao.associate = (models) => {
+  Licitacao.belongsTo(models.Cliente, {
+    foreignKey: 'cliente_id',
+    as: 'cliente',
+    onDelete: 'SET NULL',
+    onUpdate: 'CASCADE'
+  });
+};
+
 // Adicionar métodos estáticos
 Licitacao.buscarPorId = async function(id) {
   return await this.findByPk(id, {
     include: [{
       model: require('./Cliente'),
       as: 'cliente',
-      attributes: ['razao_social']
+      attributes: ['razao_social', 'cnpj']
     }]
   });
 };
@@ -126,6 +136,21 @@ Licitacao.fecharLicitacao = async function(id, dados) {
     data_fechamento: dados.data_fechamento,
     status: dados.status
   });
+
+  // Buscar a licitação atualizada com as informações do cliente
+  return await this.buscarPorId(id);
+};
+
+// Método para atualizar uma licitação
+Licitacao.atualizar = async function(id, dados) {
+  const licitacao = await this.findByPk(id);
+  
+  if (!licitacao) {
+    return null;
+  }
+
+  // Atualizar os dados da licitação
+  await licitacao.update(dados);
 
   // Buscar a licitação atualizada com as informações do cliente
   return await this.buscarPorId(id);

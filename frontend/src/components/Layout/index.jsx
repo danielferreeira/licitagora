@@ -24,6 +24,7 @@ import {
   Schedule as ScheduleIcon,
   Assessment as AssessmentIcon,
   AssignmentTurnedIn as AssignmentTurnedInIcon,
+  AccountBalance as AccountBalanceIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation } from 'react-router-dom';
 
@@ -48,6 +49,7 @@ export default function Layout({ children }) {
     { text: 'Licitações', icon: <GavelIcon />, path: '/licitacoes' },
     { text: 'Documentos', icon: <DescriptionIcon />, path: '/documentos' },
     { text: 'Fechamento', icon: <AssignmentTurnedInIcon />, path: '/fechamento' },
+    { text: 'Financeiro', icon: <AccountBalanceIcon />, path: '/financeiro' },
     { text: 'Prazos', icon: <ScheduleIcon />, path: '/prazos' },
     { text: 'Relatórios', icon: <AssessmentIcon />, path: '/relatorios' },
   ];

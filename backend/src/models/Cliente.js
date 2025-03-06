@@ -67,4 +67,14 @@ const Cliente = sequelize.define('Cliente', {
   underscored: true,
 });
 
+// Adicionar associação com Licitacao
+Cliente.associate = (models) => {
+  Cliente.hasMany(models.Licitacao, {
+    foreignKey: 'cliente_id',
+    as: 'licitacoes',
+    onDelete: 'SET NULL',
+    onUpdate: 'CASCADE'
+  });
+};
+
 module.exports = Cliente; 

@@ -2,7 +2,7 @@ const Licitacao = require('./Licitacao');
 const Prazo = require('./Prazo');
 const Cliente = require('./Cliente');
 
-// Configurar relacionamentos
+// Configurar relacionamentos com Prazo
 Licitacao.hasMany(Prazo, {
   foreignKey: 'licitacao_id',
   as: 'prazos',
@@ -15,16 +15,19 @@ Prazo.belongsTo(Licitacao, {
   as: 'licitacao',
 });
 
-// Relacionamento com Cliente
-Licitacao.belongsTo(Cliente, {
-  foreignKey: 'cliente_id',
-  as: 'cliente',
-});
+// Inicializar as associações entre Cliente e Licitacao
+const initializeAssociations = () => {
+  if (Cliente.associate) {
+    Cliente.associate({ Licitacao });
+  }
+  
+  if (Licitacao.associate) {
+    Licitacao.associate({ Cliente });
+  }
+};
 
-Cliente.hasMany(Licitacao, {
-  foreignKey: 'cliente_id',
-  as: 'licitacoes',
-});
+// Executar a inicialização
+initializeAssociations();
 
 module.exports = {
   Licitacao,

@@ -1,7 +1,8 @@
 import { BrowserRouter, Routes, Route } from 'react-router-dom';
 import { ThemeProvider, CssBaseline } from '@mui/material';
 import { LocalizationProvider } from '@mui/x-date-pickers';
-import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
+import { AdapterDateFns } from '@mui/x-date-pickers/AdapterDateFns';
+import { ptBR } from 'date-fns/locale';
 import { ToastContainer } from 'react-toastify';
 import 'react-toastify/dist/ReactToastify.css';
 import theme from './theme';
@@ -15,24 +16,28 @@ import Documentos from './pages/Documentos';
 import Prazos from './pages/Prazos';
 import Relatorios from './pages/Relatorios';
 import Fechamento from './pages/Fechamento';
+import Financeiro from './pages/Financeiro';
+import VisualizarLicitacao from './pages/VisualizarLicitacao';
 
 function App() {
   return (
     <ThemeProvider theme={theme}>
       <CssBaseline />
-      <LocalizationProvider dateAdapter={AdapterDayjs}>
+      <LocalizationProvider dateAdapter={AdapterDateFns} adapterLocale={ptBR}>
         <BrowserRouter>
           <Layout>
             <Routes>
               <Route path="/" element={<Home />} />
               <Route path="/clientes" element={<Clientes />} />
-              <Route path="/licitacoes" element={<Licitacoes />} />
               <Route path="/licitacoes/nova" element={<NovaLicitacao />} />
               <Route path="/licitacoes/:id/editar" element={<EditarLicitacao />} />
+              <Route path="/licitacoes/:id" element={<VisualizarLicitacao />} />
+              <Route path="/licitacoes" element={<Licitacoes />} />
               <Route path="/documentos" element={<Documentos />} />
               <Route path="/prazos" element={<Prazos />} />
               <Route path="/relatorios" element={<Relatorios />} />
               <Route path="/fechamento" element={<Fechamento />} />
+              <Route path="/financeiro" element={<Financeiro />} />
             </Routes>
           </Layout>
         </BrowserRouter>
