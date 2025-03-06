@@ -25,6 +25,9 @@ dayjs.extend(utc);
 dayjs.extend(timezone);
 dayjs.extend(customParseFormat);
 
+// Configurar timezone para Brasil
+dayjs.tz.setDefault('America/Sao_Paulo');
+
 const API_URL = 'http://localhost:3001/api';
 
 const modalidades = [
@@ -60,8 +63,8 @@ export default function NovaLicitacao() {
     modalidade: '',
     data_abertura: null,
     data_fim: null,
-    valor_estimado: '',
-    lucro_estimado: '',
+    valor_estimado: '0,00',
+    lucro_estimado: '0,00',
     status: 'Em Análise',
     ramo_atividade: '',
     descricao: '',
@@ -73,6 +76,14 @@ export default function NovaLicitacao() {
     carregarClientes();
     if (id) {
       carregarLicitacao();
+    } else {
+      // Inicializa as datas apenas para nova licitação
+      const dataAtual = dayjs().tz('America/Sao_Paulo');
+      setLicitacao(prev => ({
+        ...prev,
+        data_abertura: dataAtual,
+        data_fim: dataAtual.add(1, 'day')
+      }));
     }
   }, [id]);
 
@@ -91,12 +102,38 @@ export default function NovaLicitacao() {
       const response = await axios.get(`${API_URL}/licitacoes/${id}`);
       const data = response.data;
       
+      // Trata as datas com mais segurança
+      let dataAbertura = null;
+      let dataFim = null;
+
+      try {
+        if (data.data_abertura) {
+          dataAbertura = dayjs(data.data_abertura).tz('America/Sao_Paulo');
+          if (!dataAbertura.isValid()) {
+            console.error('Data de abertura inválida:', data.data_abertura);
+            dataAbertura = dayjs().tz('America/Sao_Paulo');
+          }
+        }
+
+        if (data.data_fim) {
+          dataFim = dayjs(data.data_fim).tz('America/Sao_Paulo');
+          if (!dataFim.isValid()) {
+            console.error('Data fim inválida:', data.data_fim);
+            dataFim = dataAbertura ? dataAbertura.add(1, 'day') : dayjs().tz('America/Sao_Paulo').add(1, 'day');
+          }
+        }
+      } catch (error) {
+        console.error('Erro ao processar datas:', error);
+        dataAbertura = dayjs().tz('America/Sao_Paulo');
+        dataFim = dataAbertura.add(1, 'day');
+      }
+      
       setLicitacao({
         ...data,
-        data_abertura: data.data_abertura ? dayjs(data.data_abertura) : null,
-        data_fim: data.data_fim ? dayjs(data.data_fim) : null,
-        valor_estimado: data.valor_estimado?.toString() || '',
-        lucro_estimado: data.lucro_estimado?.toString() || ''
+        data_abertura: dataAbertura,
+        data_fim: dataFim,
+        valor_estimado: data.valor_estimado?.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0,00',
+        lucro_estimado: data.lucro_estimado?.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0,00'
       });
 
       if (data.cliente_id) {
@@ -154,41 +191,93 @@ export default function NovaLicitacao() {
   };
 
   const handleChange = (campo, valor) => {
-    setLicitacao(prev => ({
-      ...prev,
-      [campo]: valor
-    }));
-  };
+    if (campo === 'valor_estimado' || campo === 'lucro_estimado') {
+      // Remove caracteres não numéricos exceto ponto e vírgula
+      const numeroLimpo = valor.replace(/[^0-9.,]/g, '');
+      // Converte vírgula para ponto
+      const numeroFormatado = numeroLimpo.replace(',', '.');
+      setLicitacao(prev => ({
+        ...prev,
+        [campo]: numeroFormatado
+      }));
+    } else if (campo === 'data_abertura' || campo === 'data_fim') {
+      // Se o valor for null ou undefined, não atualiza
+      if (!valor) {
+        setLicitacao(prev => ({
+          ...prev,
+          [campo]: null
+        }));
+        return;
+      }
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
-    try {
-      // Validação das datas
-      if (licitacao.data_fim && licitacao.data_abertura) {
-        if (dayjs(licitacao.data_fim).isBefore(dayjs(licitacao.data_abertura))) {
+      // Verifica se já é um objeto dayjs
+      let dataValida = dayjs.isDayjs(valor) ? valor : dayjs(valor);
+
+      // Verifica se a data é válida
+      if (!dataValida.isValid()) {
+        toast.error(`Data ${campo === 'data_abertura' ? 'de abertura' : 'fim'} inválida`);
+        return;
+      }
+
+      // Garante que a data está no timezone correto
+      dataValida = dataValida.tz('America/Sao_Paulo', true);
+
+      // Para data_fim, verifica se é posterior à data de abertura
+      if (campo === 'data_fim' && licitacao.data_abertura) {
+        if (dataValida.isBefore(licitacao.data_abertura)) {
           toast.error('A data fim deve ser posterior à data de abertura');
           return;
         }
       }
 
-      const dadosParaEnviar = {
+      setLicitacao(prev => ({
+        ...prev,
+        [campo]: dataValida
+      }));
+    } else {
+      setLicitacao(prev => ({
+        ...prev,
+        [campo]: valor
+      }));
+    }
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+    try {
+      // Validações das datas
+      if (!licitacao.data_abertura || !licitacao.data_abertura.isValid()) {
+        toast.error('Data de abertura inválida');
+        return;
+      }
+
+      if (licitacao.data_fim && !licitacao.data_fim.isValid()) {
+        toast.error('Data fim inválida');
+        return;
+      }
+
+      // Converte os valores para o formato correto antes de enviar
+      const valorEstimado = parseFloat(licitacao.valor_estimado.replace(/\./g, '').replace(',', '.'));
+      const lucroEstimado = parseFloat(licitacao.lucro_estimado.replace(/\./g, '').replace(',', '.'));
+
+      const dadosFormatados = {
         ...licitacao,
-        valor_estimado: parseFloat(licitacao.valor_estimado),
-        lucro_estimado: parseFloat(licitacao.lucro_estimado),
-        data_abertura: licitacao.data_abertura ? dayjs(licitacao.data_abertura).toISOString() : null,
-        data_fim: licitacao.data_fim ? dayjs(licitacao.data_fim).toISOString() : null
+        data_abertura: licitacao.data_abertura.format('YYYY-MM-DDTHH:mm:ss.SSS[Z]'),
+        data_fim: licitacao.data_fim ? licitacao.data_fim.format('YYYY-MM-DDTHH:mm:ss.SSS[Z]') : null,
+        valor_estimado: isNaN(valorEstimado) ? 0 : valorEstimado,
+        lucro_estimado: isNaN(lucroEstimado) ? 0 : lucroEstimado
       };
 
       if (id) {
-        await axios.put(`${API_URL}/licitacoes/${id}`, dadosParaEnviar);
+        await axios.put(`${API_URL}/licitacoes/${id}`, dadosFormatados);
         toast.success('Licitação atualizada com sucesso!');
       } else {
-        await axios.post(`${API_URL}/licitacoes`, dadosParaEnviar);
-        toast.success('Licitação cadastrada com sucesso!');
+        await axios.post(`${API_URL}/licitacoes`, dadosFormatados);
+        toast.success('Licitação criada com sucesso!');
       }
       navigate('/licitacoes');
     } catch (error) {
-      console.error('Erro ao salvar licitação:', error.response?.data || error);
+      console.error('Erro:', error);
       toast.error(error.response?.data?.error || 'Erro ao salvar licitação');
     }
   };
@@ -274,13 +363,17 @@ export default function NovaLicitacao() {
                 label="Data de Abertura"
                 value={licitacao.data_abertura}
                 onChange={(newValue) => handleChange('data_abertura', newValue)}
+                views={['year', 'month', 'day', 'hours', 'minutes']}
+                format="DD/MM/YYYY HH:mm"
+                ampm={false}
+                timezone="America/Sao_Paulo"
                 slotProps={{
                   textField: {
                     fullWidth: true,
-                    required: true
+                    required: true,
+                    error: !licitacao.data_abertura?.isValid()
                   }
                 }}
-                format="DD/MM/YYYY HH:mm"
               />
             </Grid>
 
@@ -289,21 +382,23 @@ export default function NovaLicitacao() {
                 label="Data Fim"
                 value={licitacao.data_fim}
                 onChange={(newValue) => {
-                  if (licitacao.data_abertura && newValue) {
-                    if (dayjs(newValue).isBefore(dayjs(licitacao.data_abertura))) {
-                      toast.error('A data fim deve ser posterior à data de abertura');
-                      return;
-                    }
+                  if (newValue && licitacao.data_abertura && dayjs(newValue).isBefore(licitacao.data_abertura)) {
+                    toast.error('A data fim deve ser posterior à data de abertura');
+                    return;
                   }
                   handleChange('data_fim', newValue);
                 }}
+                views={['year', 'month', 'day', 'hours', 'minutes']}
+                format="DD/MM/YYYY HH:mm"
+                ampm={false}
+                timezone="America/Sao_Paulo"
                 slotProps={{
                   textField: {
                     fullWidth: true,
-                    helperText: licitacao.data_abertura ? 'Data deve ser posterior à data de abertura' : ''
+                    helperText: 'Data deve ser posterior à data de abertura',
+                    error: licitacao.data_fim && !licitacao.data_fim.isValid()
                   }
                 }}
-                format="DD/MM/YYYY HH:mm"
               />
             </Grid>
 
@@ -314,9 +409,13 @@ export default function NovaLicitacao() {
                 value={licitacao.valor_estimado}
                 onChange={(e) => handleChange('valor_estimado', e.target.value)}
                 required
-                type="number"
                 InputProps={{
                   startAdornment: <InputAdornment position="start">R$</InputAdornment>,
+                }}
+                inputProps={{
+                  step: "0.01",
+                  min: "0",
+                  placeholder: "0,00"
                 }}
               />
             </Grid>
@@ -328,9 +427,13 @@ export default function NovaLicitacao() {
                 value={licitacao.lucro_estimado}
                 onChange={(e) => handleChange('lucro_estimado', e.target.value)}
                 required
-                type="number"
                 InputProps={{
                   startAdornment: <InputAdornment position="start">R$</InputAdornment>,
+                }}
+                inputProps={{
+                  step: "0.01",
+                  min: "0",
+                  placeholder: "0,00"
                 }}
               />
             </Grid>

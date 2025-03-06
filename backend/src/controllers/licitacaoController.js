@@ -227,11 +227,11 @@ class LicitacaoController {
       console.log('Dados recebidos:', { id, valor_final, lucro_final, foi_ganha, motivo_perda, status });
 
       // Validações mais rigorosas
-      if (!valor_final || isNaN(parseFloat(valor_final))) {
+      if (valor_final === undefined || valor_final === null || isNaN(Number(valor_final))) {
         return res.status(400).json({ error: 'Valor final inválido' });
       }
 
-      if (!lucro_final || isNaN(parseFloat(lucro_final))) {
+      if (lucro_final === undefined || lucro_final === null || isNaN(Number(lucro_final))) {
         return res.status(400).json({ error: 'Lucro final inválido' });
       }
 
@@ -247,9 +247,15 @@ class LicitacaoController {
         return res.status(400).json({ error: 'Status inválido para fechamento' });
       }
 
+      // Converte os valores para números com precisão decimal
+      const valorFinalNumero = Number(valor_final);
+      const lucroFinalNumero = Number(lucro_final);
+
+      console.log('Valores convertidos:', { valorFinalNumero, lucroFinalNumero });
+
       const dadosAtualizacao = {
-        valor_final: parseFloat(valor_final),
-        lucro_final: parseFloat(lucro_final),
+        valor_final: valorFinalNumero,
+        lucro_final: lucroFinalNumero,
         foi_ganha: Boolean(foi_ganha),
         motivo_perda: foi_ganha ? null : motivo_perda.trim(),
         data_fechamento: new Date(),

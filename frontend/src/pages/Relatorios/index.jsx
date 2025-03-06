@@ -383,6 +383,9 @@ export default function Relatorios() {
                           <Typography variant="h5">
                             {relatorioLicitacoes.totalLicitacoes}
                           </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            {relatorioLicitacoes.licitacoesEmAnalise} em análise • {relatorioLicitacoes.licitacoesEmAndamento} em andamento
+                          </Typography>
                         </CardContent>
                       </Card>
                     </Grid>
@@ -390,10 +393,19 @@ export default function Relatorios() {
                       <Card variant="outlined">
                         <CardContent>
                           <Typography variant="subtitle2" color="text.secondary">
-                            Licitações Ganhas
+                            Licitações Finalizadas
                           </Typography>
-                          <Typography variant="h5" color="success.main">
-                            {relatorioLicitacoes.licitacoesGanhas}
+                          <Typography variant="h5" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                            {relatorioLicitacoes.licitacoesFinalizadas}
+                            <Chip
+                              label={`${relatorioLicitacoes.licitacoesGanhas} ganhas`}
+                              color="success"
+                              size="small"
+                              variant="outlined"
+                            />
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Taxa de sucesso: {((relatorioLicitacoes.licitacoesGanhas / relatorioLicitacoes.licitacoesFinalizadas) * 100 || 0).toFixed(1)}%
                           </Typography>
                         </CardContent>
                       </Card>
@@ -406,6 +418,9 @@ export default function Relatorios() {
                           </Typography>
                           <Typography variant="h5" color="primary.main">
                             {formatarMoeda(relatorioLicitacoes.valorTotalGanho)}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Média por licitação: {formatarMoeda(relatorioLicitacoes.valorTotalGanho / relatorioLicitacoes.licitacoesGanhas || 0)}
                           </Typography>
                         </CardContent>
                       </Card>
@@ -420,6 +435,9 @@ export default function Relatorios() {
                             relatorioLicitacoes.lucroTotal > 0 ? 'success.main' : 'error.main'
                           }>
                             {formatarMoeda(relatorioLicitacoes.lucroTotal)}
+                          </Typography>
+                          <Typography variant="caption" color="text.secondary">
+                            Margem: {((relatorioLicitacoes.lucroTotal / relatorioLicitacoes.valorTotalGanho) * 100 || 0).toFixed(1)}%
                           </Typography>
                         </CardContent>
                       </Card>
@@ -453,25 +471,41 @@ export default function Relatorios() {
                                 color={
                                   licitacao.status === 'Finalizada' 
                                     ? (licitacao.foi_ganha ? 'success' : 'error')
-                                    : 'default'
+                                    : 'primary'
                                 }
+                                variant={licitacao.status === 'Finalizada' ? 'filled' : 'outlined'}
                                 size="small"
                               />
                             </TableCell>
-                            <TableCell>{licitacao.data_abertura}</TableCell>
+                            <TableCell>{format(new Date(licitacao.data_abertura), 'dd/MM/yyyy HH:mm')}</TableCell>
                             <TableCell align="right">{formatarMoeda(licitacao.valor_estimado)}</TableCell>
-                            <TableCell align="right">{formatarMoeda(licitacao.valor_final)}</TableCell>
                             <TableCell align="right">
-                              <Typography 
-                                color={licitacao.lucro_final > 0 ? 'success.main' : 'error.main'}
-                              >
-                                {formatarMoeda(licitacao.lucro_final)}
-                              </Typography>
+                              {licitacao.status === 'Finalizada' 
+                                ? formatarMoeda(licitacao.valor_final)
+                                : '-'}
+                            </TableCell>
+                            <TableCell align="right">
+                              {licitacao.status === 'Finalizada' ? (
+                                <Typography 
+                                  color={licitacao.lucro_final > 0 ? 'success.main' : 'error.main'}
+                                >
+                                  {formatarMoeda(licitacao.lucro_final)}
+                                </Typography>
+                              ) : '-'}
                             </TableCell>
                             <TableCell>
                               <Chip 
-                                label={licitacao.foi_ganha ? 'Ganha' : 'Perdida'} 
-                                color={licitacao.foi_ganha ? 'success' : 'error'}
+                                label={
+                                  licitacao.status === 'Finalizada'
+                                    ? (licitacao.foi_ganha ? 'Ganha' : 'Perdida')
+                                    : 'Aguardando'
+                                }
+                                color={
+                                  licitacao.status === 'Finalizada'
+                                    ? (licitacao.foi_ganha ? 'success' : 'error')
+                                    : 'warning'
+                                }
+                                variant={licitacao.status === 'Finalizada' ? 'filled' : 'outlined'}
                                 size="small"
                               />
                             </TableCell>

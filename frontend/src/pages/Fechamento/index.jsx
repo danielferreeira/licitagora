@@ -34,6 +34,55 @@ import { formatCurrency } from '../../utils/format';
 
 const API_URL = 'http://localhost:3001/api';
 
+// Funções de manipulação de valores monetários
+const formatarValorMonetario = (valor) => {
+  if (valor === null || valor === undefined || valor === '') return '';
+  
+  // Remove tudo exceto números
+  let valorLimpo = valor.toString().replace(/[^\d]/g, '');
+  
+  // Se não houver valor, retorna vazio
+  if (!valorLimpo) return '';
+  
+  // Retorna apenas os números
+  return valorLimpo;
+};
+
+const converterParaNumero = (valor) => {
+  if (!valor) return null;
+  
+  // Remove tudo exceto números
+  const valorLimpo = valor.toString().replace(/[^\d]/g, '');
+  
+  // Se não há valor após a limpeza, retorna null
+  if (!valorLimpo) return null;
+  
+  // Converte para número inteiro
+  const valorNumerico = parseInt(valorLimpo, 10);
+  
+  return isNaN(valorNumerico) ? null : valorNumerico;
+};
+
+const validarValorMonetario = (valor) => {
+  if (!valor) return false;
+  
+  const numero = converterParaNumero(valor);
+  return numero !== null && numero >= 0;
+};
+
+// Função para formatar número para exibição
+const formatarNumeroParaExibicao = (numero) => {
+  if (numero === null || numero === undefined) return '';
+  
+  // Converte para número inteiro e depois para string
+  return Math.floor(Number(numero)).toString();
+};
+
+// Função para converter valor para número
+const parseCurrencyValue = (value) => {
+  return converterParaNumero(value);
+};
+
 export default function Fechamento() {
   const [licitacoes, setLicitacoes] = useState([]);
   const [licitacoesFiltradas, setLicitacoesFiltradas] = useState([]);
@@ -83,64 +132,102 @@ export default function Fechamento() {
 
   const handleFecharLicitacao = async () => {
     try {
-      // Validações
-      if (!dadosFechamento.valor_final || isNaN(parseFloat(dadosFechamento.valor_final))) {
-        toast.error('Informe um valor final válido');
+      console.log('=== INÍCIO DO PROCESSO DE FECHAMENTO ===');
+      console.log('1. Valores do formulário:', {
+        valor_final_original: dadosFechamento.valor_final,
+        lucro_final_original: dadosFechamento.lucro_final
+      });
+      
+      // Converte os valores para números
+      const valorFinal = converterParaNumero(dadosFechamento.valor_final);
+      const lucroFinal = converterParaNumero(dadosFechamento.lucro_final);
+
+      console.log('2. Valores após conversão:', {
+        valorFinal,
+        lucroFinal,
+        valorFinal_tipo: typeof valorFinal,
+        lucroFinal_tipo: typeof lucroFinal
+      });
+
+      if (valorFinal === null || lucroFinal === null) {
+        toast.error('Por favor, insira valores válidos');
         return;
       }
 
-      if (!dadosFechamento.lucro_final || isNaN(parseFloat(dadosFechamento.lucro_final))) {
-        toast.error('Informe um lucro final válido');
+      if (typeof dadosFechamento.foi_ganha !== 'boolean') {
+        toast.error('Por favor, selecione se a licitação foi ganha ou perdida');
         return;
       }
 
-      if (dadosFechamento.foi_ganha === '') {
-        toast.error('Selecione se a licitação foi ganha ou perdida');
-        return;
-      }
-
-      if (!dadosFechamento.foi_ganha && !dadosFechamento.motivo_perda) {
-        toast.error('Informe o motivo da perda');
+      if (!dadosFechamento.foi_ganha && !dadosFechamento.motivo_perda?.trim()) {
+        toast.error('Por favor, informe o motivo da perda');
         return;
       }
 
       const dadosParaEnviar = {
-        ...dadosFechamento,
-        valor_final: parseFloat(dadosFechamento.valor_final),
-        lucro_final: parseFloat(dadosFechamento.lucro_final),
-        foi_ganha: Boolean(dadosFechamento.foi_ganha),
-        status: 'Finalizada'
+        valor_final: valorFinal,
+        lucro_final: lucroFinal,
+        foi_ganha: dadosFechamento.foi_ganha,
+        motivo_perda: dadosFechamento.foi_ganha ? null : dadosFechamento.motivo_perda.trim(),
+        status: 'Finalizada',
+        data_fechamento: new Date().toISOString()
       };
 
-      await axios.put(`${API_URL}/licitacoes/${licitacaoSelecionada.id}/fechamento`, dadosParaEnviar);
-      
-      toast.success('Licitação fechada com sucesso');
-      setOpenDialog(false);
-      carregarLicitacoes();
-      setLicitacaoSelecionada(null);
-      setDadosFechamento({
-        valor_final: '',
-        lucro_final: '',
-        foi_ganha: '',
-        motivo_perda: ''
-      });
+      console.log('3. Dados para enviar:', dadosParaEnviar);
+
+      const response = await axios.put(`${API_URL}/licitacoes/${licitacaoSelecionada.id}/fechamento`, dadosParaEnviar);
+
+      console.log('4. Resposta do servidor:', response.data);
+
+      if (response.status === 200) {
+        const licitacaoAtualizada = response.data;
+        const novaLista = licitacoes.map(licitacao => 
+          licitacao.id === licitacaoSelecionada.id ? licitacaoAtualizada : licitacao
+        );
+
+        setLicitacoes(novaLista);
+        setLicitacoesFiltradas(novaLista.filter(l => l.status === 'Em Andamento'));
+        setOpenDialog(false);
+        setDadosFechamento({
+          valor_final: '',
+          lucro_final: '',
+          foi_ganha: '',
+          motivo_perda: ''
+        });
+        toast.success('Licitação fechada com sucesso!');
+      }
     } catch (error) {
       console.error('Erro ao fechar licitação:', error);
-      const mensagemErro = error.response?.data?.error || 
-                          error.message || 
-                          'Erro ao fechar licitação. Tente novamente.';
-      toast.error(mensagemErro);
+      toast.error('Erro ao fechar licitação');
     }
   };
 
-  const handleSelecionarLicitacao = (licitacao) => {
+  const handleAbrirDialog = (licitacao) => {
     setLicitacaoSelecionada(licitacao);
+    
+    // Inicializa com valores vazios
     setDadosFechamento({
-      valor_final: licitacao.valor_estimado || '',
-      lucro_final: licitacao.lucro_estimado || '',
+      valor_final: '',
+      lucro_final: '',
       foi_ganha: '',
       motivo_perda: ''
     });
+    
+    // Se tiver valores estimados, formata para exibição
+    if (licitacao.valor_estimado !== null && licitacao.valor_estimado !== undefined) {
+      setDadosFechamento(prev => ({
+        ...prev,
+        valor_final: formatarNumeroParaExibicao(licitacao.valor_estimado)
+      }));
+    }
+    
+    if (licitacao.lucro_estimado !== null && licitacao.lucro_estimado !== undefined) {
+      setDadosFechamento(prev => ({
+        ...prev,
+        lucro_final: formatarNumeroParaExibicao(licitacao.lucro_estimado)
+      }));
+    }
+    
     setOpenDialog(true);
   };
 
@@ -196,7 +283,7 @@ export default function Fechamento() {
                   <ListItem
                     key={licitacao.id}
                     button
-                    onClick={() => handleSelecionarLicitacao(licitacao)}
+                    onClick={() => handleAbrirDialog(licitacao)}
                     sx={{
                       borderRadius: 1,
                       mb: 1,
@@ -329,23 +416,51 @@ export default function Fechamento() {
           <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
             <TextField
               label="Valor Final"
-              type="number"
               value={dadosFechamento.valor_final}
-              onChange={(e) => setDadosFechamento({ ...dadosFechamento, valor_final: e.target.value })}
+              onChange={(e) => {
+                const novoValor = formatarValorMonetario(e.target.value);
+                setDadosFechamento(prev => ({
+                  ...prev,
+                  valor_final: novoValor
+                }));
+              }}
+              error={dadosFechamento.valor_final !== '' && !validarValorMonetario(dadosFechamento.valor_final)}
+              helperText={
+                dadosFechamento.valor_final !== '' && !validarValorMonetario(dadosFechamento.valor_final)
+                  ? 'Valor inválido'
+                  : 'Use apenas números'
+              }
               fullWidth
               InputProps={{
                 startAdornment: <InputAdornment position="start">R$</InputAdornment>,
+              }}
+              inputProps={{
+                inputMode: 'numeric',
               }}
             />
 
             <TextField
               label="Lucro Final"
-              type="number"
               value={dadosFechamento.lucro_final}
-              onChange={(e) => setDadosFechamento({ ...dadosFechamento, lucro_final: e.target.value })}
+              onChange={(e) => {
+                const novoValor = formatarValorMonetario(e.target.value);
+                setDadosFechamento(prev => ({
+                  ...prev,
+                  lucro_final: novoValor
+                }));
+              }}
+              error={dadosFechamento.lucro_final !== '' && !validarValorMonetario(dadosFechamento.lucro_final)}
+              helperText={
+                dadosFechamento.lucro_final !== '' && !validarValorMonetario(dadosFechamento.lucro_final)
+                  ? 'Valor inválido'
+                  : 'Use apenas números'
+              }
               fullWidth
               InputProps={{
                 startAdornment: <InputAdornment position="start">R$</InputAdornment>,
+              }}
+              inputProps={{
+                inputMode: 'numeric',
               }}
             />
 
@@ -353,7 +468,7 @@ export default function Fechamento() {
               <InputLabel>Resultado</InputLabel>
               <Select
                 value={dadosFechamento.foi_ganha}
-                onChange={(e) => setDadosFechamento({ ...dadosFechamento, foi_ganha: e.target.value })}
+                onChange={(e) => setDadosFechamento(prev => ({ ...prev, foi_ganha: e.target.value }))}
                 label="Resultado"
               >
                 <MenuItem value={true}>Ganha</MenuItem>
@@ -367,9 +482,29 @@ export default function Fechamento() {
                 multiline
                 rows={3}
                 value={dadosFechamento.motivo_perda}
-                onChange={(e) => setDadosFechamento({ ...dadosFechamento, motivo_perda: e.target.value })}
+                onChange={(e) => setDadosFechamento(prev => ({ ...prev, motivo_perda: e.target.value }))}
                 fullWidth
               />
+            )}
+
+            {licitacaoSelecionada && (
+              <Box sx={{ mt: 2, p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
+                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
+                  Valores Estimados
+                </Typography>
+                <Grid container spacing={2}>
+                  <Grid item xs={6}>
+                    <Typography variant="body2">
+                      Valor: {formatCurrency(licitacaoSelecionada.valor_estimado)}
+                    </Typography>
+                  </Grid>
+                  <Grid item xs={6}>
+                    <Typography variant="body2">
+                      Lucro: {formatCurrency(licitacaoSelecionada.lucro_estimado)}
+                    </Typography>
+                  </Grid>
+                </Grid>
+              </Box>
             )}
           </Box>
         </DialogContent>
@@ -378,7 +513,7 @@ export default function Fechamento() {
           <Button
             onClick={handleFecharLicitacao}
             variant="contained"
-            disabled={!dadosFechamento.valor_final || !dadosFechamento.lucro_final || dadosFechamento.foi_ganha === ''}
+            disabled={!dadosFechamento.valor_final || !dadosFechamento.lucro_final || dadosFechamento.foi_ganha === '' || (dadosFechamento.foi_ganha === false && !dadosFechamento.motivo_perda)}
           >
             Fechar Licitação
           </Button>

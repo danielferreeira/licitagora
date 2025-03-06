@@ -40,12 +40,20 @@ const Licitacao = sequelize.define('Licitacao', {
     allowNull: true,
   },
   valor_estimado: {
-    type: DataTypes.DECIMAL(10, 2),
+    type: DataTypes.DECIMAL(15, 2),
     allowNull: true,
+    get() {
+      const value = this.getDataValue('valor_estimado');
+      return value === null ? null : Number(value);
+    }
   },
   lucro_estimado: {
-    type: DataTypes.DECIMAL(10, 2),
+    type: DataTypes.DECIMAL(15, 2),
     allowNull: true,
+    get() {
+      const value = this.getDataValue('lucro_estimado');
+      return value === null ? null : Number(value);
+    }
   },
   status: {
     type: DataTypes.STRING,
@@ -69,12 +77,20 @@ const Licitacao = sequelize.define('Licitacao', {
     allowNull: true,
   },
   valor_final: {
-    type: DataTypes.DECIMAL(10, 2),
+    type: DataTypes.DECIMAL(15, 2),
     allowNull: true,
+    get() {
+      const value = this.getDataValue('valor_final');
+      return value === null ? null : Number(value);
+    }
   },
   lucro_final: {
-    type: DataTypes.DECIMAL(10, 2),
+    type: DataTypes.DECIMAL(15, 2),
     allowNull: true,
+    get() {
+      const value = this.getDataValue('lucro_final');
+      return value === null ? null : Number(value);
+    }
   },
   foi_ganha: {
     type: DataTypes.BOOLEAN,
@@ -154,6 +170,11 @@ Licitacao.atualizar = async function(id, dados) {
 
   // Buscar a licitação atualizada com as informações do cliente
   return await this.buscarPorId(id);
+};
+
+// Método para criar uma licitação
+Licitacao.criar = async function(dados) {
+  return await this.create(dados);
 };
 
 module.exports = Licitacao; 
