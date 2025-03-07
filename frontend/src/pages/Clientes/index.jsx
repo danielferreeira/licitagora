@@ -35,13 +35,11 @@ import {
   Search as SearchIcon,
   Clear as ClearIcon,
 } from '@mui/icons-material';
-import axios from 'axios';
 import NovoClienteDialog from '../../components/NovoClienteDialog';
 import EditarClienteDialog from '../../components/EditarClienteDialog';
 import VisualizarClienteDialog from '../../components/VisualizarClienteDialog';
 import { toast } from 'react-toastify';
-
-const API_URL = 'http://localhost:3001/api';
+import { clienteService } from '../../services/supabase';
 
 const estados = [
   'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG',
@@ -50,15 +48,12 @@ const estados = [
 
 const ramosAtividade = [
   'Construção Civil',
-  'Tecnologia',
-  'Saúde',
-  'Educação',
-  'Alimentação',
-  'Transporte',
-  'Varejo',
-  'Serviços',
-  'Indústria',
-  'Outros',
+  'Tecnologia da Informação',
+  'Serviços de Limpeza',
+  'Manutenção',
+  'Consultoria',
+  'Fornecimento de Materiais',
+  'Outros'
 ];
 
 export default function Clientes() {
@@ -75,24 +70,39 @@ export default function Clientes() {
     estado: '',
     ramo_atividade: '',
   });
+  const [loading, setLoading] = useState(false);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   const carregarClientes = async () => {
+    setLoading(true);
     try {
-      const params = new URLSearchParams();
-      
-      if (filtros.razao_social) params.append('razao_social', filtros.razao_social);
-      if (filtros.cnpj) params.append('cnpj', filtros.cnpj);
-      if (filtros.cidade) params.append('cidade', filtros.cidade);
-      if (filtros.estado) params.append('estado', filtros.estado);
-      if (filtros.ramo_atividade) params.append('ramo_atividade', filtros.ramo_atividade);
+      let query = clienteService.listarClientes();
 
-      const response = await axios.get(`${API_URL}/clientes?${params.toString()}`);
-      setClientes(response.data);
+      // Aplicar filtros
+      if (filtros.razao_social) {
+        query = query.ilike('razao_social', `%${filtros.razao_social}%`);
+      }
+      if (filtros.cnpj) {
+        query = query.ilike('cnpj', `%${filtros.cnpj}%`);
+      }
+      if (filtros.cidade) {
+        query = query.ilike('cidade', `%${filtros.cidade}%`);
+      }
+      if (filtros.estado) {
+        query = query.eq('estado', filtros.estado);
+      }
+      if (filtros.ramo_atividade) {
+        query = query.contains('ramos_atividade', [filtros.ramo_atividade]);
+      }
+
+      const data = await query;
+      setClientes(data);
     } catch (error) {
       console.error('Erro ao carregar clientes:', error);
       toast.error('Erro ao carregar clientes');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -103,7 +113,7 @@ export default function Clientes() {
   const handleDelete = async (id) => {
     if (window.confirm('Tem certeza que deseja excluir este cliente?')) {
       try {
-        await axios.delete(`${API_URL}/clientes/${id}`);
+        await clienteService.excluirCliente(id);
         toast.success('Cliente removido com sucesso');
         carregarClientes();
       } catch (error) {
@@ -248,167 +258,84 @@ export default function Clientes() {
   );
 
   const MobileView = () => (
-    <Grid container spacing={2}>
+    <Box>
       {clientes.map((cliente) => (
-        <Grid item xs={12} key={cliente.id}>
-          <Card 
-            elevation={2}
-            sx={{
-              '&:hover': {
-                boxShadow: 6,
-                transform: 'translateY(-2px)',
-                transition: 'all 0.2s ease-in-out'
-              }
-            }}
-          >
-            <CardContent>
-              <Typography variant="h6" gutterBottom>
-                {cliente.razao_social}
-              </Typography>
-              <Typography color="textSecondary" gutterBottom>
-                CNPJ: {cliente.cnpj}
-              </Typography>
-              <Typography variant="body2" gutterBottom>
-                Email: {cliente.email}
-              </Typography>
-              <Typography variant="body2" gutterBottom>
-                Telefone: {cliente.telefone}
-              </Typography>
-              <Typography variant="body2" gutterBottom>
-                Localização: {cliente.cidade} - {cliente.estado}
-              </Typography>
-              <Box mt={1}>
-                {cliente.ramos_atividade.map((ramo, index) => (
-                  <Chip
-                    key={index}
-                    label={ramo}
-                    size="small"
-                    sx={{ mr: 0.5, mb: 0.5 }}
-                  />
-                ))}
-              </Box>
-              <Box mt={2} display="flex" justifyContent="flex-end" gap={1}>
-                <Tooltip title="Visualizar">
-                  <IconButton 
-                    color="info" 
-                    onClick={() => handleView(cliente)}
-                    sx={{ '&:hover': { transform: 'scale(1.1)' } }}
-                  >
-                    <VisibilityIcon />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Editar">
-                  <IconButton 
-                    color="primary" 
-                    onClick={() => handleEdit(cliente)}
-                    sx={{ '&:hover': { transform: 'scale(1.1)' } }}
-                  >
-                    <EditIcon />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Excluir">
-                  <IconButton 
-                    color="error" 
-                    onClick={() => handleDelete(cliente.id)}
-                    sx={{ '&:hover': { transform: 'scale(1.1)' } }}
-                  >
-                    <DeleteIcon />
-                  </IconButton>
-                </Tooltip>
-              </Box>
-            </CardContent>
-          </Card>
-        </Grid>
+        <Card key={cliente.id} sx={{ mb: 2 }}>
+          <CardContent>
+            <Typography variant="h6" gutterBottom>
+              {cliente.razao_social}
+            </Typography>
+            <Typography color="textSecondary" gutterBottom>
+              CNPJ: {cliente.cnpj}
+            </Typography>
+            <Typography variant="body2" gutterBottom>
+              {cliente.cidade} - {cliente.estado}
+            </Typography>
+            <Box sx={{ mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+              {cliente.ramos_atividade.map((ramo, index) => (
+                <Chip key={index} label={ramo} size="small" />
+              ))}
+            </Box>
+            <Box sx={{ mt: 2, display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+              <IconButton size="small" onClick={() => handleView(cliente)}>
+                <VisibilityIcon />
+              </IconButton>
+              <IconButton size="small" onClick={() => handleEdit(cliente)}>
+                <EditIcon />
+              </IconButton>
+              <IconButton size="small" onClick={() => handleDelete(cliente.id)}>
+                <DeleteIcon />
+              </IconButton>
+            </Box>
+          </CardContent>
+        </Card>
       ))}
-    </Grid>
+    </Box>
   );
 
   const DesktopView = () => (
-    <TableContainer 
-      component={Paper} 
-      elevation={2}
-      sx={{
-        height: 'calc(100vh - 300px)',
-        overflow: 'auto'
-      }}
-    >
-      <Table stickyHeader>
+    <TableContainer component={Paper}>
+      <Table>
         <TableHead>
           <TableRow>
-            <TableCell sx={{ fontWeight: 'bold', bgcolor: 'background.paper' }}>Razão Social</TableCell>
-            <TableCell sx={{ fontWeight: 'bold', bgcolor: 'background.paper' }}>CNPJ</TableCell>
-            <TableCell sx={{ fontWeight: 'bold', bgcolor: 'background.paper' }}>Email</TableCell>
-            <TableCell sx={{ fontWeight: 'bold', bgcolor: 'background.paper' }}>Telefone</TableCell>
-            <TableCell sx={{ fontWeight: 'bold', bgcolor: 'background.paper' }}>Cidade</TableCell>
-            <TableCell sx={{ fontWeight: 'bold', bgcolor: 'background.paper' }}>Estado</TableCell>
-            <TableCell sx={{ fontWeight: 'bold', bgcolor: 'background.paper' }}>Ramos de Atividade</TableCell>
-            <TableCell align="center" sx={{ fontWeight: 'bold', bgcolor: 'background.paper' }}>Ações</TableCell>
+            <TableCell>Razão Social</TableCell>
+            <TableCell>CNPJ</TableCell>
+            <TableCell>Cidade</TableCell>
+            <TableCell>Estado</TableCell>
+            <TableCell>Ramos de Atividade</TableCell>
+            <TableCell align="right">Ações</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {clientes.map((cliente) => (
-            <TableRow 
-              key={cliente.id}
-              sx={{ 
-                '&:hover': { 
-                  bgcolor: 'action.hover',
-                  transition: 'background-color 0.2s ease-in-out'
-                }
-              }}
-            >
+            <TableRow key={cliente.id}>
               <TableCell>{cliente.razao_social}</TableCell>
               <TableCell>{cliente.cnpj}</TableCell>
-              <TableCell>{cliente.email}</TableCell>
-              <TableCell>{cliente.telefone}</TableCell>
               <TableCell>{cliente.cidade}</TableCell>
               <TableCell>{cliente.estado}</TableCell>
               <TableCell>
-                <Box display="flex" flexWrap="wrap" gap={0.5}>
+                <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
                   {cliente.ramos_atividade.map((ramo, index) => (
-                    <Chip 
-                      key={index} 
-                      label={ramo} 
-                      size="small"
-                      sx={{ 
-                        '&:hover': { 
-                          boxShadow: 1,
-                          transform: 'translateY(-1px)'
-                        }
-                      }}
-                    />
+                    <Chip key={index} label={ramo} size="small" />
                   ))}
                 </Box>
               </TableCell>
-              <TableCell align="center">
-                <Box display="flex" justifyContent="center" gap={1}>
-                  <Tooltip title="Visualizar">
-                    <IconButton 
-                      color="info" 
-                      onClick={() => handleView(cliente)}
-                      sx={{ '&:hover': { transform: 'scale(1.1)' } }}
-                    >
-                      <VisibilityIcon />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Editar">
-                    <IconButton 
-                      color="primary" 
-                      onClick={() => handleEdit(cliente)}
-                      sx={{ '&:hover': { transform: 'scale(1.1)' } }}
-                    >
-                      <EditIcon />
-                    </IconButton>
-                  </Tooltip>
-                  <Tooltip title="Excluir">
-                    <IconButton 
-                      color="error" 
-                      onClick={() => handleDelete(cliente.id)}
-                      sx={{ '&:hover': { transform: 'scale(1.1)' } }}
-                    >
-                      <DeleteIcon />
-                    </IconButton>
-                  </Tooltip>
-                </Box>
+              <TableCell align="right">
+                <Tooltip title="Visualizar">
+                  <IconButton size="small" onClick={() => handleView(cliente)}>
+                    <VisibilityIcon />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Editar">
+                  <IconButton size="small" onClick={() => handleEdit(cliente)}>
+                    <EditIcon />
+                  </IconButton>
+                </Tooltip>
+                <Tooltip title="Excluir">
+                  <IconButton size="small" onClick={() => handleDelete(cliente.id)}>
+                    <DeleteIcon />
+                  </IconButton>
+                </Tooltip>
               </TableCell>
             </TableRow>
           ))}
@@ -418,69 +345,79 @@ export default function Clientes() {
   );
 
   return (
-    <Container maxWidth="xl" sx={{ py: 3 }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
-          Clientes
-        </Typography>
-        <Box sx={{ display: 'flex', gap: 2 }}>
-          <Button
-            variant="outlined"
-            onClick={() => setShowFilters(!showFilters)}
-            startIcon={<FilterListIcon />}
-          >
-            {showFilters ? 'Ocultar Filtros' : 'Mostrar Filtros'}
-          </Button>
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => setOpenNovo(true)}
-          >
-            Novo Cliente
-          </Button>
+    <Container maxWidth="xl">
+      <Box sx={{ mb: 4 }}>
+        <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
+          <Typography variant="h4" component="h1">
+            Clientes
+          </Typography>
+          <Box sx={{ display: 'flex', gap: 2 }}>
+            <Button
+              variant="outlined"
+              startIcon={<FilterListIcon />}
+              onClick={() => setShowFilters(!showFilters)}
+            >
+              Filtros
+            </Button>
+            <Button
+              variant="contained"
+              startIcon={<AddIcon />}
+              onClick={() => setOpenNovo(true)}
+            >
+              Novo Cliente
+            </Button>
+          </Box>
         </Box>
+
+        <Collapse in={showFilters}>
+          {renderFiltros()}
+        </Collapse>
+
+        {loading ? (
+          <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+            <Typography>Carregando...</Typography>
+          </Box>
+        ) : (
+          isMobile ? <MobileView /> : <DesktopView />
+        )}
       </Box>
 
-      <Collapse in={showFilters}>
-        {renderFiltros()}
-      </Collapse>
+      {openNovo && (
+        <NovoClienteDialog
+          open={openNovo}
+          onClose={() => setOpenNovo(false)}
+          onSuccess={() => {
+            setOpenNovo(false);
+            carregarClientes();
+          }}
+        />
+      )}
 
-      {isMobile ? <MobileView /> : <DesktopView />}
+      {openEditar && clienteSelecionado && (
+        <EditarClienteDialog
+          open={openEditar}
+          cliente={clienteSelecionado}
+          onClose={() => {
+            setOpenEditar(false);
+            setClienteSelecionado(null);
+          }}
+          onSuccess={() => {
+            setOpenEditar(false);
+            setClienteSelecionado(null);
+            carregarClientes();
+          }}
+        />
+      )}
 
-      <NovoClienteDialog
-        open={openNovo}
-        onClose={() => setOpenNovo(false)}
-        onSave={() => {
-          setOpenNovo(false);
-          carregarClientes();
-        }}
-      />
-
-      {clienteSelecionado && (
-        <>
-          <EditarClienteDialog
-            open={openEditar}
-            cliente={clienteSelecionado}
-            onClose={() => {
-              setOpenEditar(false);
-              setClienteSelecionado(null);
-            }}
-            onSave={() => {
-              setOpenEditar(false);
-              setClienteSelecionado(null);
-              carregarClientes();
-            }}
-          />
-
-          <VisualizarClienteDialog
-            open={openVisualizar}
-            cliente={clienteSelecionado}
-            onClose={() => {
-              setOpenVisualizar(false);
-              setClienteSelecionado(null);
-            }}
-          />
-        </>
+      {openVisualizar && clienteSelecionado && (
+        <VisualizarClienteDialog
+          open={openVisualizar}
+          cliente={clienteSelecionado}
+          onClose={() => {
+            setOpenVisualizar(false);
+            setClienteSelecionado(null);
+          }}
+        />
       )}
     </Container>
   );

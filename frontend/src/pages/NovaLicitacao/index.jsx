@@ -14,40 +14,40 @@ import {
 } from '@mui/material';
 import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
 import { useNavigate, useParams } from 'react-router-dom';
-import axios from 'axios';
 import { toast } from 'react-toastify';
 import dayjs from 'dayjs';
 import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
+import 'dayjs/locale/pt-br';
+import { clienteService, licitacaoService } from '../../services/supabase';
 
 dayjs.extend(utc);
 dayjs.extend(timezone);
 dayjs.extend(customParseFormat);
+dayjs.locale('pt-br');
 
 // Configurar timezone para Brasil
 dayjs.tz.setDefault('America/Sao_Paulo');
 
-const API_URL = 'http://localhost:3001/api';
-
 const modalidades = [
-  'Pregão Eletrônico',
-  'Pregão Presencial',
-  'Concorrência',
-  'Tomada de Preços',
-  'Convite',
-  'Leilão',
-  'Concurso',
+  'PREGAO_ELETRONICO',
+  'PREGAO_PRESENCIAL',
+  'CONCORRENCIA',
+  'TOMADA_DE_PRECOS',
+  'CONVITE',
+  'LEILAO',
+  'CONCURSO',
 ];
 
 const ramosAtividade = [
-  'Construção Civil',
-  'Tecnologia da Informação',
-  'Serviços de Limpeza',
-  'Manutenção',
-  'Consultoria',
-  'Fornecimento de Materiais',
-  'Outros',
+  'CONSTRUCAO_CIVIL',
+  'TECNOLOGIA_DA_INFORMACAO',
+  'SERVICOS_DE_LIMPEZA',
+  'MANUTENCAO',
+  'CONSULTORIA',
+  'FORNECIMENTO_DE_MATERIAIS',
+  'OUTROS',
 ];
 
 export default function NovaLicitacao() {
@@ -65,8 +65,8 @@ export default function NovaLicitacao() {
     data_fim: null,
     valor_estimado: '0,00',
     lucro_estimado: '0,00',
-    status: 'Em Análise',
-    ramo_atividade: '',
+    status: 'EM_ANALISE',
+    ramos_atividade: [],
     descricao: '',
     requisitos: '',
     observacoes: '',
@@ -89,8 +89,10 @@ export default function NovaLicitacao() {
 
   const carregarClientes = async () => {
     try {
-      const response = await axios.get(`${API_URL}/clientes`);
-      setClientes(response.data);
+      const data = await clienteService.listarClientes();
+      if (data) {
+        setClientes(data);
+      }
     } catch (error) {
       console.error('Erro ao carregar clientes:', error);
       toast.error('Erro ao carregar clientes');
@@ -99,9 +101,13 @@ export default function NovaLicitacao() {
 
   const carregarLicitacao = async () => {
     try {
-      const response = await axios.get(`${API_URL}/licitacoes/${id}`);
-      const data = response.data;
-      
+      const data = await licitacaoService.buscarLicitacaoPorId(id);
+      if (!data) {
+        toast.error('Licitação não encontrada');
+        navigate('/licitacoes');
+        return;
+      }
+
       // Trata as datas com mais segurança
       let dataAbertura = null;
       let dataFim = null;
@@ -148,14 +154,14 @@ export default function NovaLicitacao() {
 
   const carregarRamosAtividade = async (clienteId) => {
     try {
-      const response = await axios.get(`${API_URL}/clientes/${clienteId}`);
-      const cliente = response.data;
+      const cliente = await clienteService.buscarClientePorId(clienteId);
+      if (!cliente) {
+        throw new Error('Cliente não encontrado');
+      }
+
       // Se o cliente tem ramos de atividade específicos, use-os
       if (cliente.ramos_atividade && Array.isArray(cliente.ramos_atividade)) {
         setRamosAtividadeDisponiveis(cliente.ramos_atividade);
-      } else if (cliente.ramo_atividade) {
-        // Se tem apenas um ramo de atividade
-        setRamosAtividadeDisponiveis([cliente.ramo_atividade]);
       } else {
         // Se não tem ramos específicos, use a lista padrão
         setRamosAtividadeDisponiveis(ramosAtividade);
@@ -174,7 +180,7 @@ export default function NovaLicitacao() {
       setLicitacao(prev => ({
         ...prev,
         cliente_id: clienteId,
-        ramo_atividade: '' // Limpa o ramo de atividade quando muda o cliente
+        ramos_atividade: [] // Limpa o ramo de atividade quando muda o cliente
       }));
       
       if (!clienteId) {
@@ -246,39 +252,59 @@ export default function NovaLicitacao() {
     e.preventDefault();
     try {
       // Validações das datas
-      if (!licitacao.data_abertura || !licitacao.data_abertura.isValid()) {
+      if (!licitacao.data_abertura || !dayjs.isDayjs(licitacao.data_abertura)) {
         toast.error('Data de abertura inválida');
         return;
       }
 
-      if (licitacao.data_fim && !licitacao.data_fim.isValid()) {
+      if (!licitacao.data_fim || !dayjs.isDayjs(licitacao.data_fim)) {
         toast.error('Data fim inválida');
         return;
       }
 
-      // Converte os valores para o formato correto antes de enviar
-      const valorEstimado = parseFloat(licitacao.valor_estimado.replace(/\./g, '').replace(',', '.'));
-      const lucroEstimado = parseFloat(licitacao.lucro_estimado.replace(/\./g, '').replace(',', '.'));
+      if (licitacao.data_fim.isBefore(licitacao.data_abertura)) {
+        toast.error('A data fim deve ser posterior à data de abertura');
+        return;
+      }
 
-      const dadosFormatados = {
-        ...licitacao,
-        data_abertura: licitacao.data_abertura.format('YYYY-MM-DDTHH:mm:ss.SSS[Z]'),
-        data_fim: licitacao.data_fim ? licitacao.data_fim.format('YYYY-MM-DDTHH:mm:ss.SSS[Z]') : null,
-        valor_estimado: isNaN(valorEstimado) ? 0 : valorEstimado,
-        lucro_estimado: isNaN(lucroEstimado) ? 0 : lucroEstimado
+      // Validar ramos de atividade
+      if (!licitacao.ramos_atividade || !Array.isArray(licitacao.ramos_atividade) || licitacao.ramos_atividade.length === 0) {
+        toast.error('Selecione pelo menos um ramo de atividade');
+        return;
+      }
+
+      // Prepara os dados para envio
+      const dadosLicitacao = {
+        numero: licitacao.numero,
+        cliente_id: licitacao.cliente_id,
+        orgao: licitacao.orgao,
+        objeto: licitacao.objeto,
+        modalidade: licitacao.modalidade,
+        data_abertura: licitacao.data_abertura,
+        data_fim: licitacao.data_fim,
+        valor_estimado: licitacao.valor_estimado,
+        lucro_estimado: licitacao.lucro_estimado,
+        status: licitacao.status || 'EM_ANALISE',
+        ramos_atividade: licitacao.ramos_atividade,
+        descricao: licitacao.descricao || null,
+        requisitos: licitacao.requisitos || null,
+        observacoes: licitacao.observacoes || null
       };
 
       if (id) {
-        await axios.put(`${API_URL}/licitacoes/${id}`, dadosFormatados);
+        // Atualiza licitação existente
+        await licitacaoService.atualizarLicitacao(id, dadosLicitacao);
         toast.success('Licitação atualizada com sucesso!');
       } else {
-        await axios.post(`${API_URL}/licitacoes`, dadosFormatados);
+        // Cria nova licitação
+        await licitacaoService.criarLicitacao(dadosLicitacao);
         toast.success('Licitação criada com sucesso!');
       }
+
       navigate('/licitacoes');
     } catch (error) {
-      console.error('Erro:', error);
-      toast.error(error.response?.data?.error || 'Erro ao salvar licitação');
+      console.error('Erro ao salvar licitação:', error);
+      toast.error(error.message || 'Erro ao salvar licitação');
     }
   };
 
@@ -440,13 +466,13 @@ export default function NovaLicitacao() {
 
             <Grid item xs={12} sm={6}>
               <FormControl fullWidth required>
-                <InputLabel>Ramo de Atividade</InputLabel>
+                <InputLabel>Ramos de Atividade</InputLabel>
                 <Select
-                  value={licitacao.ramo_atividade || ''}
-                  label="Ramo de Atividade"
-                  onChange={(e) => handleChange('ramo_atividade', e.target.value)}
+                  multiple
+                  value={licitacao.ramos_atividade || []}
+                  label="Ramos de Atividade"
+                  onChange={(e) => handleChange('ramos_atividade', e.target.value)}
                 >
-                  <MenuItem value="">Selecione um ramo de atividade</MenuItem>
                   {ramosAtividadeDisponiveis.map((ramo) => (
                     <MenuItem key={ramo} value={ramo}>
                       {ramo}
