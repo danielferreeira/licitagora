@@ -29,10 +29,8 @@ import {
   Cancel as CancelIcon,
 } from '@mui/icons-material';
 import { toast } from 'react-toastify';
-import axios from 'axios';
+import { licitacaoService } from '../../services/supabase';
 import { formatCurrency } from '../../utils/format';
-
-const API_URL = 'http://localhost:3001/api';
 
 // Funções de manipulação de valores monetários
 const formatarValorMonetario = (valor) => {
@@ -106,8 +104,8 @@ export default function Fechamento() {
 
   const carregarLicitacoes = async () => {
     try {
-      const response = await axios.get(`${API_URL}/licitacoes`);
-      setLicitacoes(response.data);
+      const data = await licitacaoService.listarLicitacoes();
+      setLicitacoes(data);
     } catch (error) {
       console.error('Erro ao carregar licitações:', error);
       toast.error('Erro ao carregar licitações');
@@ -116,12 +114,12 @@ export default function Fechamento() {
 
   const filtrarLicitacoes = () => {
     if (!filtro) {
-      setLicitacoesFiltradas(licitacoes.filter(l => l.status === 'Em Andamento'));
+      setLicitacoesFiltradas(licitacoes.filter(l => l.status === 'EM_ANDAMENTO'));
       return;
     }
     const filtroLower = filtro.toLowerCase();
     const filtradas = licitacoes.filter(licitacao => 
-      (licitacao.status === 'Em Andamento') && (
+      (licitacao.status === 'EM_ANDAMENTO') && (
         licitacao.numero.toLowerCase().includes(filtroLower) ||
         licitacao.orgao.toLowerCase().includes(filtroLower) ||
         licitacao.objeto.toLowerCase().includes(filtroLower)
@@ -132,22 +130,9 @@ export default function Fechamento() {
 
   const handleFecharLicitacao = async () => {
     try {
-      console.log('=== INÍCIO DO PROCESSO DE FECHAMENTO ===');
-      console.log('1. Valores do formulário:', {
-        valor_final_original: dadosFechamento.valor_final,
-        lucro_final_original: dadosFechamento.lucro_final
-      });
-      
       // Converte os valores para números
       const valorFinal = converterParaNumero(dadosFechamento.valor_final);
       const lucroFinal = converterParaNumero(dadosFechamento.lucro_final);
-
-      console.log('2. Valores após conversão:', {
-        valorFinal,
-        lucroFinal,
-        valorFinal_tipo: typeof valorFinal,
-        lucroFinal_tipo: typeof lucroFinal
-      });
 
       if (valorFinal === null || lucroFinal === null) {
         toast.error('Por favor, insira valores válidos');
@@ -169,33 +154,29 @@ export default function Fechamento() {
         lucro_final: lucroFinal,
         foi_ganha: dadosFechamento.foi_ganha,
         motivo_perda: dadosFechamento.foi_ganha ? null : dadosFechamento.motivo_perda.trim(),
-        status: 'Finalizada',
+        status: 'FINALIZADA',
         data_fechamento: new Date().toISOString()
       };
 
-      console.log('3. Dados para enviar:', dadosParaEnviar);
+      const licitacaoAtualizada = await licitacaoService.atualizarLicitacao(
+        licitacaoSelecionada.id,
+        dadosParaEnviar
+      );
 
-      const response = await axios.put(`${API_URL}/licitacoes/${licitacaoSelecionada.id}/fechamento`, dadosParaEnviar);
+      const novaLista = licitacoes.map(licitacao => 
+        licitacao.id === licitacaoSelecionada.id ? licitacaoAtualizada : licitacao
+      );
 
-      console.log('4. Resposta do servidor:', response.data);
-
-      if (response.status === 200) {
-        const licitacaoAtualizada = response.data;
-        const novaLista = licitacoes.map(licitacao => 
-          licitacao.id === licitacaoSelecionada.id ? licitacaoAtualizada : licitacao
-        );
-
-        setLicitacoes(novaLista);
-        setLicitacoesFiltradas(novaLista.filter(l => l.status === 'Em Andamento'));
-        setOpenDialog(false);
-        setDadosFechamento({
-          valor_final: '',
-          lucro_final: '',
-          foi_ganha: '',
-          motivo_perda: ''
-        });
-        toast.success('Licitação fechada com sucesso!');
-      }
+      setLicitacoes(novaLista);
+      setLicitacoesFiltradas(novaLista.filter(l => l.status === 'EM_ANDAMENTO'));
+      setOpenDialog(false);
+      setDadosFechamento({
+        valor_final: '',
+        lucro_final: '',
+        foi_ganha: '',
+        motivo_perda: ''
+      });
+      toast.success('Licitação fechada com sucesso!');
     } catch (error) {
       console.error('Erro ao fechar licitação:', error);
       toast.error('Erro ao fechar licitação');
@@ -342,7 +323,7 @@ export default function Fechamento() {
                 overflow: 'auto'
               }}>
                 {licitacoes
-                  .filter(l => l.status === 'Finalizada')
+                  .filter(l => l.status === 'FINALIZADA')
                   .map((licitacao) => (
                     <ListItem
                       key={licitacao.id}

@@ -40,36 +40,96 @@ import {
   MoreVert as MoreVertIcon,
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
-import axios from 'axios';
 import { toast } from 'react-toastify';
 import { useNavigate } from 'react-router-dom';
 import { parseISO, format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-
-const API_URL = 'http://localhost:3001/api';
+import { clienteService, licitacaoService } from '../../services/supabase';
 
 const modalidades = [
-  'Pregão Eletrônico',
-  'Pregão Presencial',
-  'Concorrência',
-  'Tomada de Preços',
-  'Convite',
-  'Leilão',
-  'RDC',
+  'PREGAO_ELETRONICO',
+  'PREGAO_PRESENCIAL',
+  'CONCORRENCIA',
+  'TOMADA_DE_PRECOS',
+  'CONVITE',
+  'LEILAO',
+  'CONCURSO'
 ];
 
 const ramosAtividade = [
-  'Construção Civil',
-  'Tecnologia',
-  'Saúde',
-  'Educação',
-  'Alimentação',
-  'Transporte',
-  'Varejo',
-  'Serviços',
-  'Indústria',
-  'Outros',
+  'CONSTRUCAO_CIVIL',
+  'TECNOLOGIA_DA_INFORMACAO',
+  'SERVICOS_DE_LIMPEZA',
+  'MANUTENCAO',
+  'CONSULTORIA',
+  'FORNECIMENTO_DE_MATERIAIS',
+  'OUTROS'
 ];
+
+const statusLicitacao = [
+  'EM_ANALISE',
+  'EM_ANDAMENTO',
+  'FINALIZADA',
+  'CANCELADA'
+];
+
+// Funções de formatação
+const getStatusDisplay = (status) => {
+  switch (status) {
+    case 'EM_ANALISE':
+      return 'Em Análise';
+    case 'EM_ANDAMENTO':
+      return 'Em Andamento';
+    case 'FINALIZADA':
+      return 'Finalizada';
+    case 'CANCELADA':
+      return 'Cancelada';
+    default:
+      return status;
+  }
+};
+
+const getModalidadeDisplay = (modalidade) => {
+  switch (modalidade) {
+    case 'PREGAO_ELETRONICO':
+      return 'Pregão Eletrônico';
+    case 'PREGAO_PRESENCIAL':
+      return 'Pregão Presencial';
+    case 'CONCORRENCIA':
+      return 'Concorrência';
+    case 'TOMADA_DE_PRECOS':
+      return 'Tomada de Preços';
+    case 'CONVITE':
+      return 'Convite';
+    case 'LEILAO':
+      return 'Leilão';
+    case 'CONCURSO':
+      return 'Concurso';
+    default:
+      return modalidade;
+  }
+};
+
+const getRamoAtividadeDisplay = (ramo) => {
+  switch (ramo) {
+    case 'CONSTRUCAO_CIVIL':
+      return 'Construção Civil';
+    case 'TECNOLOGIA_DA_INFORMACAO':
+      return 'Tecnologia da Informação';
+    case 'SERVICOS_DE_LIMPEZA':
+      return 'Serviços de Limpeza';
+    case 'MANUTENCAO':
+      return 'Manutenção';
+    case 'CONSULTORIA':
+      return 'Consultoria';
+    case 'FORNECIMENTO_DE_MATERIAIS':
+      return 'Fornecimento de Materiais';
+    case 'OUTROS':
+      return 'Outros';
+    default:
+      return ramo;
+  }
+};
 
 export default function Licitacoes() {
   const theme = useTheme();
@@ -81,6 +141,7 @@ export default function Licitacoes() {
     cliente_id: '',
     ramo_atividade: '',
     modalidade: '',
+    status: '',
     data_inicio: null,
     data_fim: null,
     valor_min: '',
@@ -100,13 +161,13 @@ export default function Licitacoes() {
   const carregarDados = async () => {
     setLoading(true);
     try {
-      const [licitacoesRes, clientesRes] = await Promise.all([
-        axios.get(`${API_URL}/licitacoes`),
-        axios.get(`${API_URL}/clientes`)
+      const [licitacoesData, clientesData] = await Promise.all([
+        licitacaoService.listarLicitacoes(),
+        clienteService.listarClientes()
       ]);
 
-      setClientes(clientesRes.data);
-      setLicitacoes(licitacoesRes.data);
+      setClientes(clientesData);
+      setLicitacoes(licitacoesData);
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
       toast.error('Erro ao carregar dados');
@@ -118,7 +179,7 @@ export default function Licitacoes() {
   const handleExcluir = async (id) => {
     if (window.confirm('Tem certeza que deseja excluir esta licitação?')) {
       try {
-        await axios.delete(`${API_URL}/licitacoes/${id}`);
+        await licitacaoService.excluirLicitacao(id);
         toast.success('Licitação excluída com sucesso!');
         carregarDados();
       } catch (error) {
@@ -159,6 +220,7 @@ export default function Licitacoes() {
       cliente_id: '',
       ramo_atividade: '',
       modalidade: '',
+      status: '',
       data_inicio: null,
       data_fim: null,
       valor_min: '',
@@ -170,18 +232,41 @@ export default function Licitacoes() {
   const aplicarFiltros = async () => {
     setLoading(true);
     try {
-      const params = new URLSearchParams();
-      
-      if (filtros.cliente_id) params.append('cliente_id', filtros.cliente_id);
-      if (filtros.ramo_atividade) params.append('ramo_atividade', filtros.ramo_atividade);
-      if (filtros.modalidade) params.append('modalidade', filtros.modalidade);
-      if (filtros.data_inicio) params.append('data_inicio', filtros.data_inicio.toISOString());
-      if (filtros.data_fim) params.append('data_fim', filtros.data_fim.toISOString());
-      if (filtros.valor_min) params.append('valor_min', filtros.valor_min);
-      if (filtros.valor_max) params.append('valor_max', filtros.valor_max);
+      let query = licitacaoService.listarLicitacoes();
 
-      const response = await axios.get(`${API_URL}/licitacoes?${params.toString()}`);
-      setLicitacoes(response.data);
+      if (filtros.cliente_id) {
+        query = query.eq('cliente_id', filtros.cliente_id);
+      }
+      if (filtros.ramo_atividade) {
+        query = query.eq('ramo_atividade', filtros.ramo_atividade);
+      }
+      if (filtros.modalidade) {
+        query = query.eq('modalidade', filtros.modalidade);
+      }
+      if (filtros.status) {
+        query = query.eq('status', filtros.status);
+      }
+      if (filtros.data_inicio) {
+        query = query.gte('data_abertura', filtros.data_inicio.toISOString());
+      }
+      if (filtros.data_fim) {
+        query = query.lte('data_fim', filtros.data_fim.toISOString());
+      }
+      if (filtros.valor_min) {
+        const valorMin = parseFloat(filtros.valor_min.replace(/\./g, '').replace(',', '.'));
+        if (!isNaN(valorMin)) {
+          query = query.gte('valor_estimado', valorMin);
+        }
+      }
+      if (filtros.valor_max) {
+        const valorMax = parseFloat(filtros.valor_max.replace(/\./g, '').replace(',', '.'));
+        if (!isNaN(valorMax)) {
+          query = query.lte('valor_estimado', valorMax);
+        }
+      }
+
+      const data = await query;
+      setLicitacoes(data);
     } catch (error) {
       console.error('Erro ao aplicar filtros:', error);
       toast.error('Erro ao filtrar licitações');
@@ -206,7 +291,8 @@ export default function Licitacoes() {
 
   const handleStatusChange = async (novoStatus) => {
     try {
-      await axios.put(`${API_URL}/licitacoes/${selectedLicitacao.id}/status`, {
+      await licitacaoService.atualizarLicitacao(selectedLicitacao.id, {
+        ...selectedLicitacao,
         status: novoStatus
       });
       
@@ -214,7 +300,7 @@ export default function Licitacoes() {
       carregarDados();
     } catch (error) {
       console.error('Erro ao atualizar status:', error);
-      toast.error(error.response?.data?.error || 'Erro ao atualizar status');
+      toast.error('Erro ao atualizar status');
     } finally {
       handleMenuClose();
     }
@@ -268,7 +354,7 @@ export default function Licitacoes() {
               <MenuItem value="">Todos</MenuItem>
               {ramosAtividade.map((ramo) => (
                 <MenuItem key={ramo} value={ramo}>
-                  {ramo}
+                  {getRamoAtividadeDisplay(ramo)}
                 </MenuItem>
               ))}
             </Select>
@@ -286,42 +372,50 @@ export default function Licitacoes() {
               <MenuItem value="">Todas</MenuItem>
               {modalidades.map((modalidade) => (
                 <MenuItem key={modalidade} value={modalidade}>
-                  {modalidade}
+                  {getModalidadeDisplay(modalidade)}
                 </MenuItem>
               ))}
             </Select>
           </FormControl>
         </Grid>
 
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid item xs={12} sm={6} md={4}>
+          <FormControl fullWidth>
+            <InputLabel>Status</InputLabel>
+            <Select
+              value={filtros.status}
+              label="Status"
+              onChange={(e) => handleFiltroChange('status', e.target.value)}
+            >
+              <MenuItem value="">Todos</MenuItem>
+              {statusLicitacao.map((status) => (
+                <MenuItem key={status} value={status}>
+                  {getStatusDisplay(status)}
+                </MenuItem>
+              ))}
+            </Select>
+          </FormControl>
+        </Grid>
+
+        <Grid item xs={12} sm={6} md={4}>
           <DatePicker
             label="Data Início"
             value={filtros.data_inicio}
             onChange={(newValue) => handleFiltroChange('data_inicio', newValue)}
-            slotProps={{
-              textField: {
-                fullWidth: true,
-                variant: 'outlined'
-              }
-            }}
+            slotProps={{ textField: { fullWidth: true } }}
           />
         </Grid>
 
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid item xs={12} sm={6} md={4}>
           <DatePicker
             label="Data Fim"
             value={filtros.data_fim}
             onChange={(newValue) => handleFiltroChange('data_fim', newValue)}
-            slotProps={{
-              textField: {
-                fullWidth: true,
-                variant: 'outlined'
-              }
-            }}
+            slotProps={{ textField: { fullWidth: true } }}
           />
         </Grid>
 
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid item xs={12} sm={6} md={4}>
           <TextField
             fullWidth
             label="Valor Mínimo"
@@ -333,7 +427,7 @@ export default function Licitacoes() {
           />
         </Grid>
 
-        <Grid item xs={12} sm={6} md={3}>
+        <Grid item xs={12} sm={6} md={4}>
           <TextField
             fullWidth
             label="Valor Máximo"
@@ -366,114 +460,69 @@ export default function Licitacoes() {
   );
 
   const renderItem = (licitacao) => (
-    <Card elevation={0} sx={{ 
-      border: '1px solid',
-      borderColor: 'divider',
-      borderRadius: 2,
-      bgcolor: licitacao.status === 'Finalizada' ? 
-        (licitacao.foi_ganha ? 'success.lighter' : 'error.lighter') : 
-        'background.paper'
-    }}>
+    <Card key={licitacao.id} sx={{ mb: 2 }}>
       <CardContent>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 2 }}>
           <Box>
-            <Typography variant="h6" sx={{ fontWeight: 600 }}>
+            <Typography variant="h6" gutterBottom>
               {licitacao.numero}
             </Typography>
-            <Typography variant="body2" color="text.secondary">
-              {licitacao.cliente_nome}
+            <Typography color="textSecondary" gutterBottom>
+              {licitacao.orgao}
             </Typography>
           </Box>
-          <Box sx={{ display: 'flex', gap: 1, alignItems: 'center' }}>
-            {licitacao.status === 'Finalizada' && (
-              <Chip
-                icon={licitacao.foi_ganha ? <CheckCircleIcon /> : <CancelIcon />}
-                label={licitacao.foi_ganha ? "Ganha" : "Perdida"}
-                color={licitacao.foi_ganha ? "success" : "error"}
-                size="small"
-              />
-            )}
+          <Box sx={{ display: 'flex', gap: 1 }}>
             <Chip
-              label={formatarValor(licitacao.status === 'Finalizada' ? licitacao.valor_final : licitacao.valor_estimado)}
-              color={licitacao.status === 'Finalizada' ? 
-                (licitacao.foi_ganha ? "success" : "error") : 
-                (licitacao.status === 'Em Andamento' ? 'warning' : 'primary')}
+              label={getStatusDisplay(licitacao.status)}
+              color={
+                licitacao.status === 'FINALIZADA' ? (licitacao.foi_ganha ? 'success' : 'error') :
+                licitacao.status === 'EM_ANDAMENTO' ? 'primary' :
+                licitacao.status === 'CANCELADA' ? 'error' :
+                'default'
+              }
               size="small"
             />
-            <Chip
-              label={licitacao.status}
-              color={licitacao.status === 'Finalizada' ? 
-                (licitacao.foi_ganha ? 'success' : 'error') : 
-                (licitacao.status === 'Em Andamento' ? 'warning' : 'default')}
-              size="small"
-              icon={licitacao.status === 'Finalizada' ? 
-                (licitacao.foi_ganha ? <CheckCircleIcon /> : <CancelIcon />) : 
-                undefined}
-            />
+            <IconButton size="small" onClick={(e) => handleMenuClick(e, licitacao)}>
+              <MoreVertIcon />
+            </IconButton>
           </Box>
         </Box>
 
-        <Grid container spacing={2}>
-          <Grid item xs={12} sm={6}>
-            <Typography variant="body2" color="text.secondary">
-              Órgão
+        <Typography variant="body2" paragraph>
+          <strong>Cliente:</strong> {licitacao.cliente?.razao_social}
             </Typography>
-            <Typography variant="body1">
-              {licitacao.orgao}
+        <Typography variant="body2" paragraph>
+          <strong>Modalidade:</strong> {getModalidadeDisplay(licitacao.modalidade)}
             </Typography>
-          </Grid>
-          <Grid item xs={12} sm={6}>
-            <Typography variant="body2" color="text.secondary">
-              Modalidade
+        <Typography variant="body2" paragraph>
+          <strong>Ramo de Atividade:</strong> {getRamoAtividadeDisplay(licitacao.ramo_atividade)}
             </Typography>
-            <Typography variant="body1">
-              {licitacao.modalidade}
+        <Typography variant="body2" paragraph>
+          <strong>Valor Estimado:</strong> {formatarValor(licitacao.valor_estimado)}
             </Typography>
-          </Grid>
-          <Grid item xs={12}>
-            <Typography variant="body2" color="text.secondary">
-              Objeto
-            </Typography>
-            <Typography variant="body1" noWrap>
-              {licitacao.objeto}
-            </Typography>
-          </Grid>
-          {licitacao.status === 'Finalizada' && !licitacao.foi_ganha && (
-            <Grid item xs={12}>
-              <Typography variant="body2" color="error">
-                Motivo da Perda: {licitacao.motivo_perda}
+        <Typography variant="body2" paragraph>
+          <strong>Data de Abertura:</strong> {formatarData(licitacao.data_abertura)}
               </Typography>
-            </Grid>
-          )}
-        </Grid>
 
-        <Box sx={{ display: 'flex', justifyContent: 'flex-end', gap: 1, mt: 2 }}>
-          <Button
+        <Box sx={{ mt: 2, display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+          <IconButton
             size="small"
-            startIcon={<VisibilityIcon />}
             onClick={() => navigate(`/licitacoes/${licitacao.id}`)}
           >
-            Visualizar
-          </Button>
-          {licitacao.status !== 'Finalizada' && (
-            <>
-              <Button
+            <VisibilityIcon />
+          </IconButton>
+          <IconButton
                 size="small"
-                startIcon={<EditIcon />}
                 onClick={() => navigate(`/licitacoes/${licitacao.id}/editar`)}
               >
-                Editar
-              </Button>
-              <Button
+            <EditIcon />
+          </IconButton>
+          <IconButton
                 size="small"
-                color="error"
-                startIcon={<DeleteIcon />}
                 onClick={() => handleExcluir(licitacao.id)}
               >
-                Excluir
-              </Button>
-            </>
-          )}
+            <DeleteIcon />
+          </IconButton>
         </Box>
       </CardContent>
     </Card>
@@ -483,89 +532,59 @@ export default function Licitacoes() {
     <Box sx={{ display: 'flex', gap: 1 }}>
       <Tooltip title="Visualizar">
         <IconButton
-          onClick={() => navigate(`/licitacoes/${licitacao.id}`)}
-          color="primary"
           size="small"
+          onClick={() => navigate(`/licitacoes/${licitacao.id}`)}
         >
           <VisibilityIcon />
         </IconButton>
       </Tooltip>
-
-      {licitacao.status !== 'Finalizada' && (
-        <>
           <Tooltip title="Editar">
             <IconButton 
+          size="small"
               onClick={() => navigate(`/licitacoes/${licitacao.id}/editar`)}
-              color="primary"
-              size="small"
             >
               <EditIcon />
             </IconButton>
           </Tooltip>
-          
-          <Tooltip title="Opções">
-            <IconButton
-              onClick={(e) => handleMenuClick(e, licitacao)}
-              size="small"
-            >
-              <MoreVertIcon />
-            </IconButton>
-          </Tooltip>
-          
           <Tooltip title="Excluir">
             <IconButton
+          size="small"
               onClick={() => handleExcluir(licitacao.id)}
-              color="error"
-              size="small"
             >
               <DeleteIcon />
             </IconButton>
           </Tooltip>
-        </>
-      )}
-
-      <Menu
-        anchorEl={anchorEl}
-        open={Boolean(anchorEl)}
-        onClose={handleMenuClose}
-      >
-        <MenuItem 
-          onClick={() => handleStatusChange('Em Análise')}
-          disabled={selectedLicitacao?.status === 'Em Análise'}
+      <Tooltip title="Mais opções">
+        <IconButton
+          size="small"
+          onClick={(e) => handleMenuClick(e, licitacao)}
         >
-          Marcar como Em Análise
-        </MenuItem>
-        <MenuItem 
-          onClick={() => handleStatusChange('Em Andamento')}
-          disabled={selectedLicitacao?.status === 'Em Andamento'}
-        >
-          Marcar como Em Andamento
-        </MenuItem>
-      </Menu>
+          <MoreVertIcon />
+        </IconButton>
+      </Tooltip>
     </Box>
   );
 
-  if (isMobile) {
     return (
-      <Box sx={{ p: 2 }}>
+    <Box sx={{ p: 3 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-          <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
+        <Typography variant="h4" component="h1">
             Licitações
           </Typography>
-          <Box sx={{ display: 'flex', gap: 1 }}>
+        <Box sx={{ display: 'flex', gap: 2 }}>
             <Button
               variant="outlined"
+            startIcon={<FilterListIcon />}
               onClick={() => setShowFilters(!showFilters)}
-              startIcon={<FilterListIcon />}
             >
-              Filtros
+            {showFilters ? 'Ocultar Filtros' : 'Mostrar Filtros'}
             </Button>
             <Button
               variant="contained"
               startIcon={<AddIcon />}
               onClick={handleNovaLicitacao}
             >
-              Nova
+            Nova Licitação
             </Button>
           </Box>
         </Box>
@@ -574,93 +593,53 @@ export default function Licitacoes() {
           {renderFiltros()}
         </Collapse>
 
-        <Grid container spacing={2}>
-          {licitacoes.map((licitacao) => (
-            <Grid item xs={12} key={licitacao.id}>
-              {renderItem(licitacao)}
-            </Grid>
-          ))}
-        </Grid>
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+          <Typography>Carregando...</Typography>
       </Box>
-    );
-  }
-
-  return (
-    <Box sx={{ p: { xs: 2, sm: 3 } }}>
-      <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h1" sx={{ fontWeight: 'bold', color: 'primary.main' }}>
-          Licitações
-        </Typography>
-        <Button
-          variant="contained"
-          startIcon={<AddIcon />}
-          onClick={handleNovaLicitacao}
-        >
-          Nova Licitação
-        </Button>
+      ) : (
+        <>
+          {isMobile ? (
+            <Box>
+              {licitacoes.map(renderItem)}
       </Box>
-
-      <Box sx={{ mb: 3 }}>
-        <Button
-          startIcon={<FilterListIcon />}
-          onClick={() => setShowFilters(!showFilters)}
-          sx={{ mb: 2 }}
-        >
-          {showFilters ? 'Ocultar Filtros' : 'Mostrar Filtros'}
-        </Button>
-
-        <Collapse in={showFilters}>
-          {renderFiltros()}
-        </Collapse>
-      </Box>
-
-      <TableContainer component={Paper} sx={{ borderRadius: 2 }}>
+          ) : (
+            <TableContainer component={Paper}>
         <Table>
           <TableHead>
             <TableRow>
               <TableCell>Número</TableCell>
+                    <TableCell>Órgão</TableCell>
               <TableCell>Cliente</TableCell>
-              <TableCell>Órgão</TableCell>
               <TableCell>Modalidade</TableCell>
               <TableCell>Valor Estimado</TableCell>
-              <TableCell>Lucro Estimado</TableCell>
               <TableCell>Data de Abertura</TableCell>
-              <TableCell>Data Fim</TableCell>
               <TableCell>Status</TableCell>
-              <TableCell align="center">Ações</TableCell>
+                    <TableCell align="right">Ações</TableCell>
             </TableRow>
           </TableHead>
           <TableBody>
             {licitacoes.map((licitacao) => (
-              <TableRow 
-                key={licitacao.id}
-                sx={{
-                  backgroundColor: licitacao.status === 'Finalizada' ? 
-                    (licitacao.foi_ganha ? 'success.lighter' : 'error.lighter') : 
-                    'inherit'
-                }}
-              >
+                    <TableRow key={licitacao.id}>
                 <TableCell>{licitacao.numero}</TableCell>
-                <TableCell>{clientes.find(c => c.id === licitacao.cliente_id)?.razao_social}</TableCell>
                 <TableCell>{licitacao.orgao}</TableCell>
-                <TableCell>{licitacao.modalidade}</TableCell>
+                      <TableCell>{licitacao.cliente?.razao_social}</TableCell>
+                      <TableCell>{getModalidadeDisplay(licitacao.modalidade)}</TableCell>
                 <TableCell>{formatarValor(licitacao.valor_estimado)}</TableCell>
-                <TableCell>{formatarValor(licitacao.lucro_estimado)}</TableCell>
                 <TableCell>{formatarData(licitacao.data_abertura)}</TableCell>
-                <TableCell>{formatarData(licitacao.data_fim)}</TableCell>
                 <TableCell>
                   <Chip
-                    label={licitacao.status}
-                    color={licitacao.status === 'Finalizada' ? 
-                      (licitacao.foi_ganha ? 'success' : 'error') : 
-                      (licitacao.status === 'Em Andamento' ? 'warning' : 'default')}
+                          label={getStatusDisplay(licitacao.status)}
+                          color={
+                            licitacao.status === 'FINALIZADA' ? (licitacao.foi_ganha ? 'success' : 'error') :
+                            licitacao.status === 'EM_ANDAMENTO' ? 'primary' :
+                            licitacao.status === 'CANCELADA' ? 'error' :
+                            'default'
+                          }
                     size="small"
-                    icon={licitacao.status === 'Finalizada' ? 
-                      (licitacao.foi_ganha ? <CheckCircleIcon /> : <CancelIcon />) : 
-                      undefined}
                   />
                 </TableCell>
-                <TableCell align="center">
+                      <TableCell align="right">
                   {renderAcoes(licitacao)}
                 </TableCell>
               </TableRow>
@@ -668,6 +647,25 @@ export default function Licitacoes() {
           </TableBody>
         </Table>
       </TableContainer>
+          )}
+        </>
+      )}
+
+      <Menu
+        anchorEl={anchorEl}
+        open={Boolean(anchorEl)}
+        onClose={handleMenuClose}
+      >
+        {statusLicitacao.map((status) => (
+          <MenuItem
+            key={status}
+            onClick={() => handleStatusChange(status)}
+            selected={selectedLicitacao?.status === status}
+          >
+            {getStatusDisplay(status)}
+          </MenuItem>
+        ))}
+      </Menu>
     </Box>
   );
 } 

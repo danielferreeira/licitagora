@@ -30,10 +30,66 @@ import {
   ArrowBack as ArrowBackIcon
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
-import axios from 'axios';
 import { toast } from 'react-toastify';
+import { clienteService, licitacaoService } from '../../services/supabase';
 
-const API_URL = 'http://localhost:3001/api';
+// Funções de formatação
+const getStatusDisplay = (status) => {
+  switch (status) {
+    case 'EM_ANALISE':
+      return 'Em Análise';
+    case 'EM_ANDAMENTO':
+      return 'Em Andamento';
+    case 'FINALIZADA':
+      return 'Finalizada';
+    case 'CANCELADA':
+      return 'Cancelada';
+    default:
+      return status;
+  }
+};
+
+const getModalidadeDisplay = (modalidade) => {
+  switch (modalidade) {
+    case 'PREGAO_ELETRONICO':
+      return 'Pregão Eletrônico';
+    case 'PREGAO_PRESENCIAL':
+      return 'Pregão Presencial';
+    case 'CONCORRENCIA':
+      return 'Concorrência';
+    case 'TOMADA_DE_PRECOS':
+      return 'Tomada de Preços';
+    case 'CONVITE':
+      return 'Convite';
+    case 'LEILAO':
+      return 'Leilão';
+    case 'CONCURSO':
+      return 'Concurso';
+    default:
+      return modalidade;
+  }
+};
+
+const getRamoAtividadeDisplay = (ramo) => {
+  switch (ramo) {
+    case 'CONSTRUCAO_CIVIL':
+      return 'Construção Civil';
+    case 'TECNOLOGIA_DA_INFORMACAO':
+      return 'Tecnologia da Informação';
+    case 'SERVICOS_DE_LIMPEZA':
+      return 'Serviços de Limpeza';
+    case 'MANUTENCAO':
+      return 'Manutenção';
+    case 'CONSULTORIA':
+      return 'Consultoria';
+    case 'FORNECIMENTO_DE_MATERIAIS':
+      return 'Fornecimento de Materiais';
+    case 'OUTROS':
+      return 'Outros';
+    default:
+      return ramo;
+  }
+};
 
 export default function BuscarLicitacoes() {
   const theme = useTheme();
@@ -53,8 +109,10 @@ export default function BuscarLicitacoes() {
 
   const carregarClientes = async () => {
     try {
-      const response = await axios.get(`${API_URL}/clientes`);
-      setClientes(response.data);
+      const data = await clienteService.listarClientes();
+      if (data) {
+        setClientes(data);
+      }
     } catch (error) {
       console.error('Erro ao carregar clientes:', error);
       toast.error('Erro ao carregar clientes');
@@ -74,28 +132,16 @@ export default function BuscarLicitacoes() {
         throw new Error('Cliente não encontrado');
       }
 
-      // TODO: Implementar chamada à API de licitações públicas
-      // Por enquanto, usando dados mock
-      const mockLicitacoes = [
-        {
-          id: 1,
-          numero: 'PE-001/2024',
-          orgao: 'Prefeitura Municipal',
-          objeto: 'Aquisição de equipamentos de informática',
-          dataAbertura: '2024-05-15',
-          valorEstimado: 500000.00,
-          modalidade: 'Pregão Eletrônico',
-          ramosAtividade: ['Tecnologia'],
-          status: 'Aberta'
-        },
-        // Adicione mais dados mock conforme necessário
-      ];
+      // Buscar licitações públicas baseadas nos ramos de atividade do cliente
+      const licitacoesEncontradas = await licitacaoService.buscarLicitacoesPorRamo(cliente.ramos_atividade);
 
-      // Filtra licitações que correspondem aos ramos de atividade do cliente
-      const licitacoesFiltradas = mockLicitacoes.filter(licitacao =>
-        licitacao.ramosAtividade.some(ramo => 
-          cliente.ramos_atividade.includes(ramo)
-        )
+      // Filtrar licitações que já estão cadastradas para o cliente
+      const licitacoesCliente = await licitacaoService.buscarLicitacoesPorCliente(clienteSelecionado);
+      const licitacoesClienteIds = licitacoesCliente.map(l => l.id);
+
+      // Remover licitações que já estão cadastradas para o cliente
+      const licitacoesFiltradas = licitacoesEncontradas.filter(
+        licitacao => !licitacoesClienteIds.includes(licitacao.id)
       );
 
       setLicitacoesEncontradas(licitacoesFiltradas);
@@ -116,11 +162,24 @@ export default function BuscarLicitacoes() {
     setDialogOpen(true);
   };
 
-  const handleCadastrarParticipacao = () => {
-    // TODO: Implementar cadastro de participação
-    console.log('Cadastrando participação na licitação:', licitacaoSelecionada);
-    setDialogOpen(false);
-    toast.success('Participação cadastrada com sucesso!');
+  const handleCadastrarParticipacao = async () => {
+    try {
+      // Criar nova licitação no Supabase vinculada ao cliente
+      const novaLicitacao = {
+        ...licitacaoSelecionada,
+        cliente_id: clienteSelecionado,
+        status: 'EM_ANALISE',
+        data_cadastro: new Date().toISOString()
+      };
+
+      await licitacaoService.criarLicitacao(novaLicitacao);
+      toast.success('Licitação cadastrada com sucesso!');
+      setDialogOpen(false);
+      navigate('/licitacoes');
+    } catch (error) {
+      console.error('Erro ao cadastrar licitação:', error);
+      toast.error('Erro ao cadastrar licitação');
+    }
   };
 
   return (
@@ -196,7 +255,7 @@ export default function BuscarLicitacoes() {
             {clientes.find(c => c.id === clienteSelecionado)?.ramos_atividade.map((ramo, index) => (
               <Chip
                 key={index}
-                label={ramo}
+                label={getRamoAtividadeDisplay(ramo)}
                 color="primary"
                 variant="outlined"
               />
@@ -233,27 +292,27 @@ export default function BuscarLicitacoes() {
                 </Typography>
                 <Typography variant="body2" gutterBottom>
                   <strong>Data de Abertura:</strong>{' '}
-                  {new Date(licitacao.dataAbertura).toLocaleDateString('pt-BR')}
+                  {new Date(licitacao.data_abertura).toLocaleDateString('pt-BR')}
                 </Typography>
                 <Typography variant="body2" gutterBottom>
                   <strong>Valor Estimado:</strong>{' '}
                   {new Intl.NumberFormat('pt-BR', {
                     style: 'currency',
                     currency: 'BRL'
-                  }).format(licitacao.valorEstimado)}
+                  }).format(licitacao.valor_estimado)}
                 </Typography>
                 <Typography variant="body2" gutterBottom>
-                  <strong>Modalidade:</strong> {licitacao.modalidade}
+                  <strong>Modalidade:</strong> {getModalidadeDisplay(licitacao.modalidade)}
                 </Typography>
                 <Box mt={1}>
                   <Typography variant="body2" gutterBottom>
                     <strong>Ramos de Atividade:</strong>
                   </Typography>
                   <Box display="flex" flexWrap="wrap" gap={0.5}>
-                    {licitacao.ramosAtividade.map((ramo, index) => (
+                    {licitacao.ramo_atividade.map((ramo, index) => (
                       <Chip
                         key={index}
-                        label={ramo}
+                        label={getRamoAtividadeDisplay(ramo)}
                         size="small"
                         color="primary"
                         variant="outlined"
@@ -263,14 +322,22 @@ export default function BuscarLicitacoes() {
                 </Box>
               </CardContent>
               <CardActions sx={{ justifyContent: 'flex-end', p: 2 }}>
-                <Tooltip title="Visualizar Detalhes">
-                  <IconButton 
-                    color="primary"
-                    onClick={() => handleVisualizarLicitacao(licitacao)}
-                  >
-                    <VisibilityIcon />
-                  </IconButton>
-                </Tooltip>
+                <Button
+                  startIcon={<VisibilityIcon />}
+                  onClick={() => handleVisualizarLicitacao(licitacao)}
+                  variant="outlined"
+                  size="small"
+                >
+                  Visualizar
+                </Button>
+                <Button
+                  startIcon={<AddIcon />}
+                  onClick={() => handleCadastrarParticipacao(licitacao)}
+                  variant="contained"
+                  size="small"
+                >
+                  Participar
+                </Button>
               </CardActions>
             </Card>
           </Grid>
@@ -283,10 +350,10 @@ export default function BuscarLicitacoes() {
         maxWidth="md"
         fullWidth
       >
-        <DialogTitle sx={{ bgcolor: 'primary.main', color: 'white' }}>
+        <DialogTitle>
           Detalhes da Licitação
         </DialogTitle>
-        <DialogContent sx={{ mt: 2 }}>
+        <DialogContent dividers>
           {licitacaoSelecionada && (
             <Grid container spacing={2}>
               <Grid item xs={12}>
@@ -294,7 +361,7 @@ export default function BuscarLicitacoes() {
                   {licitacaoSelecionada.numero}
                 </Typography>
               </Grid>
-              <Grid item xs={12}>
+              <Grid item xs={12} sm={6}>
                 <Typography variant="body1" gutterBottom>
                   <strong>Órgão:</strong> {licitacaoSelecionada.orgao}
                 </Typography>
@@ -307,7 +374,7 @@ export default function BuscarLicitacoes() {
               <Grid item xs={12} sm={6}>
                 <Typography variant="body1" gutterBottom>
                   <strong>Data de Abertura:</strong>{' '}
-                  {new Date(licitacaoSelecionada.dataAbertura).toLocaleDateString('pt-BR')}
+                  {new Date(licitacaoSelecionada.data_abertura).toLocaleDateString('pt-BR')}
                 </Typography>
               </Grid>
               <Grid item xs={12} sm={6}>
@@ -316,28 +383,24 @@ export default function BuscarLicitacoes() {
                   {new Intl.NumberFormat('pt-BR', {
                     style: 'currency',
                     currency: 'BRL'
-                  }).format(licitacaoSelecionada.valorEstimado)}
+                  }).format(licitacaoSelecionada.valor_estimado)}
                 </Typography>
               </Grid>
               <Grid item xs={12} sm={6}>
                 <Typography variant="body1" gutterBottom>
-                  <strong>Modalidade:</strong> {licitacaoSelecionada.modalidade}
-                </Typography>
-              </Grid>
-              <Grid item xs={12} sm={6}>
-                <Typography variant="body1" gutterBottom>
-                  <strong>Status:</strong> {licitacaoSelecionada.status}
+                  <strong>Modalidade:</strong>{' '}
+                  {getModalidadeDisplay(licitacaoSelecionada.modalidade)}
                 </Typography>
               </Grid>
               <Grid item xs={12}>
                 <Typography variant="body1" gutterBottom>
                   <strong>Ramos de Atividade:</strong>
                 </Typography>
-                <Box display="flex" flexWrap="wrap" gap={1}>
-                  {licitacaoSelecionada.ramosAtividade.map((ramo, index) => (
+                <Box display="flex" flexWrap="wrap" gap={0.5}>
+                  {licitacaoSelecionada.ramo_atividade.map((ramo, index) => (
                     <Chip
                       key={index}
-                      label={ramo}
+                      label={getRamoAtividadeDisplay(ramo)}
                       color="primary"
                       variant="outlined"
                     />
@@ -347,16 +410,16 @@ export default function BuscarLicitacoes() {
             </Grid>
           )}
         </DialogContent>
-        <DialogActions sx={{ p: 2 }}>
-          <Button onClick={() => setDialogOpen(false)} variant="outlined">
+        <DialogActions>
+          <Button onClick={() => setDialogOpen(false)}>
             Fechar
           </Button>
           <Button
-            onClick={handleCadastrarParticipacao}
             variant="contained"
+            onClick={handleCadastrarParticipacao}
             startIcon={<AddIcon />}
           >
-            Cadastrar Participação
+            Participar da Licitação
           </Button>
         </DialogActions>
       </Dialog>

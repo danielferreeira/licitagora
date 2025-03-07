@@ -34,12 +34,10 @@ import {
   Visibility as VisibilityIcon,
   Close as CloseIcon,
 } from '@mui/icons-material';
-import axios from 'axios';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'react-toastify';
-
-const API_URL = 'http://localhost:3001/api';
+import { licitacaoService } from '../../services/supabase';
 
 export default function Financeiro() {
   const theme = useTheme();
@@ -62,9 +60,9 @@ export default function Financeiro() {
 
   const carregarDados = async () => {
     try {
-      const response = await axios.get(`${API_URL}/licitacoes`);
-      const licitacoesFinalizadas = response.data.filter(
-        (licitacao) => licitacao.status === 'Finalizada'
+      const licitacoes = await licitacaoService.listarLicitacoes();
+      const licitacoesFinalizadas = licitacoes.filter(
+        (licitacao) => licitacao.status === 'FINALIZADA'
       );
 
       const licitacoesGanhas = licitacoesFinalizadas.filter(
@@ -150,8 +148,8 @@ export default function Financeiro() {
   const handleVisualizarLicitacao = async (licitacao) => {
     try {
       setLoading(true);
-      const response = await axios.get(`${API_URL}/licitacoes/${licitacao.id}`);
-      setLicitacaoSelecionada(response.data);
+      const detalhes = await licitacaoService.buscarLicitacaoPorId(licitacao.id);
+      setLicitacaoSelecionada(detalhes);
       setDialogOpen(true);
     } catch (error) {
       console.error('Erro ao carregar detalhes da licitação:', error);

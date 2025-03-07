@@ -30,12 +30,10 @@ import {
   Business as BusinessIcon,
   Group as GroupIcon,
 } from '@mui/icons-material';
-import axios from 'axios';
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-
-const API_URL = 'http://localhost:3001/api';
+import { clienteService, licitacaoService } from '../../services/supabase';
 
 export default function Relatorios() {
   const [clientes, setClientes] = useState([]);
@@ -62,13 +60,11 @@ export default function Relatorios() {
 
   const carregarClientes = async () => {
     try {
-      console.log('Carregando clientes...');
-      const response = await axios.get(`${API_URL}/clientes`);
-      console.log('Clientes carregados:', response.data);
-      setClientes(response.data);
+      const data = await clienteService.listarClientes();
+      setClientes(data);
     } catch (error) {
-      console.error('Erro ao carregar clientes:', error.response || error);
-      toast.error(`Erro ao carregar clientes: ${error.response?.data?.error || error.message}`);
+      console.error('Erro ao carregar clientes:', error);
+      toast.error('Erro ao carregar clientes');
     }
   };
 
@@ -118,25 +114,40 @@ export default function Relatorios() {
   const gerarRelatorioLicitacoes = async () => {
     setLoading(prev => ({ ...prev, licitacoes: true }));
     try {
-      const params = new URLSearchParams();
-      if (filtros.dataInicio) params.append('dataInicio', format(filtros.dataInicio, 'yyyy-MM-dd'));
-      if (filtros.dataFim) params.append('dataFim', format(filtros.dataFim, 'yyyy-MM-dd'));
-      if (filtros.status) params.append('status', filtros.status);
-      if (filtros.cliente_id) params.append('cliente_id', filtros.cliente_id);
+      let query = licitacaoService.listarLicitacoes();
 
-      console.log('Gerando relatório de licitações com parâmetros:', params.toString());
-      const response = await axios.get(`${API_URL}/relatorios/licitacoes?${params.toString()}`);
-      console.log('Relatório de licitações gerado:', response.data);
-      
-      // Validar e formatar dados
-      const dados = response.data;
-      if (!dados || !dados.detalhes) {
-        throw new Error('Dados do relatório de licitações inválidos');
+      // Aplicar filtros
+      if (filtros.dataInicio) {
+        query = query.gte('data_abertura', filtros.dataInicio.toISOString());
+      }
+      if (filtros.dataFim) {
+        query = query.lte('data_fim', filtros.dataFim.toISOString());
+      }
+      if (filtros.status) {
+        query = query.eq('status', filtros.status);
+      }
+      if (filtros.cliente_id) {
+        query = query.eq('cliente_id', filtros.cliente_id);
       }
 
+      const licitacoes = await query;
+
+      // Calcular estatísticas
+      const totalLicitacoes = licitacoes.length;
+      const licitacoesGanhas = licitacoes.filter(l => l.status === 'FINALIZADA' && l.foi_ganha).length;
+      const valorTotalGanho = licitacoes
+        .filter(l => l.status === 'FINALIZADA' && l.foi_ganha)
+        .reduce((total, l) => total + (Number(l.valor_final) || 0), 0);
+      const lucroTotal = licitacoes
+        .filter(l => l.status === 'FINALIZADA' && l.foi_ganha)
+        .reduce((total, l) => total + (Number(l.lucro_final) || 0), 0);
+
       setRelatorioLicitacoes({
-        ...dados,
-        detalhes: dados.detalhes.map(licitacao => ({
+        totalLicitacoes,
+        licitacoesGanhas,
+        valorTotalGanho,
+        lucroTotal,
+        detalhes: licitacoes.map(licitacao => ({
           ...licitacao,
           valor_estimado: Number(licitacao.valor_estimado) || 0,
           valor_final: Number(licitacao.valor_final) || 0,
@@ -147,8 +158,8 @@ export default function Relatorios() {
         }))
       });
     } catch (error) {
-      console.error('Erro ao gerar relatório de licitações:', error.response || error);
-      toast.error(`Erro ao gerar relatório de licitações: ${error.response?.data?.error || error.message}`);
+      console.error('Erro ao gerar relatório de licitações:', error);
+      toast.error('Erro ao gerar relatório de licitações');
       setRelatorioLicitacoes(null);
     } finally {
       setLoading(prev => ({ ...prev, licitacoes: false }));
@@ -158,30 +169,37 @@ export default function Relatorios() {
   const gerarRelatorioClientes = async () => {
     setLoading(prev => ({ ...prev, clientes: true }));
     try {
-      console.log('Gerando relatório de clientes...');
-      const response = await axios.get(`${API_URL}/relatorios/clientes`);
-      console.log('Relatório de clientes gerado:', response.data);
-      
-      // Validar e formatar dados
-      const dados = response.data;
-      if (!dados || !dados.detalhes) {
-        throw new Error('Dados do relatório de clientes inválidos');
-      }
+      // Buscar clientes e licitações
+      const [clientesData, licitacoesData] = await Promise.all([
+        clienteService.listarClientes(),
+        licitacaoService.listarLicitacoes()
+      ]);
+
+      // Processar dados por cliente
+      const detalhesClientes = clientesData.map(cliente => {
+        const licitacoesCliente = licitacoesData.filter(l => l.cliente_id === cliente.id);
+        const licitacoesGanhas = licitacoesCliente.filter(l => l.status === 'FINALIZADA' && l.foi_ganha);
+        const licitacoesEmAndamento = licitacoesCliente.filter(l => l.status === 'EM_ANDAMENTO');
+        const valorTotalGanho = licitacoesGanhas.reduce((total, l) => total + (Number(l.valor_final) || 0), 0);
+        const lucroTotal = licitacoesGanhas.reduce((total, l) => total + (Number(l.lucro_final) || 0), 0);
+
+        return {
+          ...cliente,
+          totalLicitacoes: licitacoesCliente.length,
+          licitacoesGanhas: licitacoesGanhas.length,
+          licitacoesEmAndamento: licitacoesEmAndamento.length,
+          valorTotalGanho,
+          lucroTotal
+        };
+      });
 
       setRelatorioClientes({
-        ...dados,
-        detalhes: dados.detalhes.map(cliente => ({
-          ...cliente,
-          totalLicitacoes: Number(cliente.totalLicitacoes) || 0,
-          licitacoesGanhas: Number(cliente.licitacoesGanhas) || 0,
-          licitacoesEmAndamento: Number(cliente.licitacoesEmAndamento) || 0,
-          valorTotalGanho: Number(cliente.valorTotalGanho) || 0,
-          lucroTotal: Number(cliente.lucroTotal) || 0
-        }))
+        totalClientes: clientesData.length,
+        detalhes: detalhesClientes
       });
     } catch (error) {
-      console.error('Erro ao gerar relatório de clientes:', error.response || error);
-      toast.error(`Erro ao gerar relatório de clientes: ${error.response?.data?.error || error.message}`);
+      console.error('Erro ao gerar relatório de clientes:', error);
+      toast.error('Erro ao gerar relatório de clientes');
       setRelatorioClientes(null);
     } finally {
       setLoading(prev => ({ ...prev, clientes: false }));
@@ -191,27 +209,50 @@ export default function Relatorios() {
   const gerarRelatorioDesempenho = async () => {
     setLoading(prev => ({ ...prev, desempenho: true }));
     try {
-      console.log('Gerando relatório de desempenho com período:', filtros.periodo);
-      const response = await axios.get(`${API_URL}/relatorios/desempenho?periodo=${filtros.periodo}`);
-      console.log('Relatório de desempenho gerado:', response.data);
-      
-      // Validar e formatar dados
-      const dados = response.data;
-      if (!dados || !dados.periodo) {
-        throw new Error('Dados do relatório de desempenho inválidos');
-      }
+      const licitacoes = await licitacaoService.listarLicitacoes();
+      const licitacoesFinalizadas = licitacoes.filter(l => l.status === 'FINALIZADA');
+      const licitacoesGanhas = licitacoesFinalizadas.filter(l => l.foi_ganha);
+
+      // Calcular estatísticas
+      const taxaSucesso = licitacoesFinalizadas.length > 0
+        ? (licitacoesGanhas.length / licitacoesFinalizadas.length) * 100
+        : 0;
+
+      const valorTotalGanho = licitacoesGanhas.reduce((total, l) => total + (Number(l.valor_final) || 0), 0);
+      const lucroTotal = licitacoesGanhas.reduce((total, l) => total + (Number(l.lucro_final) || 0), 0);
+
+      // Calcular média de prazo de fechamento
+      const prazos = licitacoesFinalizadas
+        .filter(l => l.data_fechamento && l.data_abertura)
+        .map(l => {
+          const inicio = new Date(l.data_abertura);
+          const fim = new Date(l.data_fechamento);
+          return Math.ceil((fim - inicio) / (1000 * 60 * 60 * 24)); // Dias
+        });
+
+      const mediaPrazoFechamento = prazos.length > 0
+        ? prazos.reduce((a, b) => a + b, 0) / prazos.length
+        : 0;
+
+      // Calcular principais motivos de perda
+      const motivosPerda = licitacoesFinalizadas
+        .filter(l => !l.foi_ganha && l.motivo_perda)
+        .reduce((acc, l) => {
+          acc[l.motivo_perda] = (acc[l.motivo_perda] || 0) + 1;
+          return acc;
+        }, {});
 
       setRelatorioDesempenho({
-        ...dados,
-        taxaSucesso: Number(dados.taxaSucesso) || 0,
-        valorTotalGanho: Number(dados.valorTotalGanho) || 0,
-        lucroTotal: Number(dados.lucroTotal) || 0,
-        mediaPrazoFechamento: Number(dados.mediaPrazoFechamento) || 0,
-        principaisMotivosPerda: dados.principaisMotivosPerda || {}
+        periodo: filtros.periodo,
+        taxaSucesso,
+        valorTotalGanho,
+        lucroTotal,
+        mediaPrazoFechamento,
+        principaisMotivosPerda: motivosPerda
       });
     } catch (error) {
-      console.error('Erro ao gerar relatório de desempenho:', error.response || error);
-      toast.error(`Erro ao gerar relatório de desempenho: ${error.response?.data?.error || error.message}`);
+      console.error('Erro ao gerar relatório de desempenho:', error);
+      toast.error('Erro ao gerar relatório de desempenho');
       setRelatorioDesempenho(null);
     } finally {
       setLoading(prev => ({ ...prev, desempenho: false }));

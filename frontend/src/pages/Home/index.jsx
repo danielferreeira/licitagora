@@ -8,12 +8,10 @@ import {
   CheckCircle as CheckCircleIcon,
   Warning as WarningIcon,
 } from '@mui/icons-material';
-import axios from 'axios';
 import { format, isAfter, isBefore, addDays, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'react-toastify';
-
-const API_URL = 'http://localhost:3001/api';
+import { clienteService, licitacaoService } from '../../services/supabase';
 
 export default function Home() {
   const theme = useTheme();
@@ -35,35 +33,33 @@ export default function Home() {
 
   const carregarDados = async () => {
     try {
-      // Buscar clientes
-      const clientesResponse = await axios.get(`${API_URL}/clientes`);
-      const totalClientes = clientesResponse.data.length;
-
-      // Buscar licitações
-      const licitacoesResponse = await axios.get(`${API_URL}/licitacoes`);
-      const licitacoes = licitacoesResponse.data;
+      // Buscar clientes e licitações simultaneamente
+      const [clientes, licitacoes] = await Promise.all([
+        clienteService.listarClientes(),
+        licitacaoService.listarLicitacoes()
+      ]);
       
       const hoje = new Date();
       
-      // Calcular licitações em andamento (status "Em Andamento")
+      // Calcular licitações em andamento
       const licitacoesAndamento = licitacoes.filter(licitacao => 
-        licitacao.status === 'Em Andamento'
+        licitacao.status === 'EM_ANDAMENTO'
       );
 
-      // Calcular licitações finalizadas (status "Finalizada")
+      // Calcular licitações finalizadas
       const licitacoesFinalizadas = licitacoes.filter(licitacao => 
-        licitacao.status === 'Finalizada'
+        licitacao.status === 'FINALIZADA'
       );
 
-      // Calcular licitações em análise (status "Em Análise")
+      // Calcular licitações em análise
       const licitacoesAnalise = licitacoes.filter(licitacao => 
-        licitacao.status === 'Em Análise'
+        licitacao.status === 'EM_ANALISE'
       );
 
       // Calcular próximos prazos (licitações em andamento que vencem nos próximos 7 dias)
       const proximaSemana = addDays(hoje, 7);
       const proximosPrazos = licitacoes.filter(licitacao => {
-        if (licitacao.status !== 'Em Andamento') return false;
+        if (licitacao.status !== 'EM_ANDAMENTO') return false;
         const dataFim = licitacao.data_fim ? new Date(licitacao.data_fim) : addDays(new Date(licitacao.data_abertura), 30);
         return isBefore(dataFim, proximaSemana) && isAfter(dataFim, hoje);
       });
@@ -71,7 +67,7 @@ export default function Home() {
       // Ordenar licitações por data de fim e pegar as 5 mais próximas (apenas em andamento e análise)
       const proximasLicitacoes = licitacoes
         .filter(licitacao => 
-          (licitacao.status === 'Em Andamento' || licitacao.status === 'Em Análise') &&
+          (licitacao.status === 'EM_ANDAMENTO' || licitacao.status === 'EM_ANALISE') &&
           isAfter(licitacao.data_fim ? new Date(licitacao.data_fim) : addDays(new Date(licitacao.data_abertura), 30), hoje)
         )
         .sort((a, b) => {
@@ -93,7 +89,7 @@ export default function Home() {
       }).sort((a, b) => a.diasRestantes - b.diasRestantes);
 
       setDashboardData({
-        clientesAtivos: totalClientes,
+        clientesAtivos: clientes.length,
         licitacoesAndamento: licitacoesAndamento.length,
         licitacoesFinalizadas: licitacoesFinalizadas.length,
         licitacoesAnalise: licitacoesAnalise.length,
@@ -142,11 +138,11 @@ export default function Home() {
 
   const getStatusColor = (licitacao) => {
     switch (licitacao.status) {
-      case 'Em Análise':
+      case 'EM_ANALISE':
         return '#F59E0B';
-      case 'Em Andamento':
+      case 'EM_ANDAMENTO':
         return '#22C55E';
-      case 'Finalizada':
+      case 'FINALIZADA':
         return '#3B82F6';
       default:
         return '#64748B';
@@ -158,7 +154,7 @@ export default function Home() {
     const dataFim = licitacao.data_fim ? new Date(licitacao.data_fim) : addDays(new Date(licitacao.data_abertura), 30);
     const diasRestantes = differenceInDays(dataFim, hoje);
 
-    if (licitacao.status === 'Finalizada') return '#3B82F6';
+    if (licitacao.status === 'FINALIZADA') return '#3B82F6';
     if (diasRestantes < 0) return '#EF4444';
     if (diasRestantes <= 7) return '#F59E0B';
     return '#22C55E';

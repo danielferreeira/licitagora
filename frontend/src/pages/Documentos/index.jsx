@@ -41,24 +41,12 @@ import {
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers';
 import { toast } from 'react-toastify';
-import axios from 'axios';
+import { clienteService, licitacaoService, documentoService } from '../../services/supabase';
 
-const API_URL = 'http://localhost:3001/api';
-
-const downloadDocumento = async (id, tipo, nomeArquivo) => {
+const downloadDocumento = async (id, tipo, arquivoUrl) => {
   try {
-    // Construir a URL correta baseada no tipo
-    const endpoint = tipo === 'cliente' ? 'cliente' : 'licitacao';
-    
-    // Criar um link temporário e simular o clique
-    const link = document.createElement('a');
-    link.href = `${API_URL}/documentos/${endpoint}/download/${id}`;
-    link.target = '_blank'; // Abrir em nova aba
-    link.rel = 'noopener noreferrer';
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
-
+    const url = await documentoService.getUrlDownload(arquivoUrl);
+    window.open(url, '_blank');
   } catch (error) {
     console.error('Erro ao abrir documento:', error);
     toast.error('Erro ao abrir o documento. Por favor, tente novamente.');
@@ -152,8 +140,10 @@ export default function Documentos() {
 
   const carregarClientes = async () => {
     try {
-      const response = await axios.get(`${API_URL}/clientes`);
-      setClientes(response.data);
+      const data = await clienteService.listarClientes();
+      if (data) {
+        setClientes(data);
+      }
     } catch (error) {
       console.error('Erro ao carregar clientes:', error);
       toast.error('Erro ao carregar clientes');
@@ -162,8 +152,10 @@ export default function Documentos() {
 
   const carregarLicitacoes = async () => {
     try {
-      const response = await axios.get(`${API_URL}/licitacoes`);
-      setLicitacoes(response.data);
+      const data = await licitacaoService.listarLicitacoes();
+      if (data) {
+        setLicitacoes(data);
+      }
     } catch (error) {
       console.error('Erro ao carregar licitações:', error);
       toast.error('Erro ao carregar licitações');
@@ -172,8 +164,10 @@ export default function Documentos() {
 
   const carregarTiposDocumentos = async () => {
     try {
-      const response = await axios.get(`${API_URL}/documentos/tipos`);
-      setTiposDocumentos(response.data);
+      const data = await documentoService.listarTiposDocumentos();
+      if (data) {
+        setTiposDocumentos(data);
+      }
     } catch (error) {
       console.error('Erro ao carregar tipos de documentos:', error);
       toast.error('Erro ao carregar tipos de documentos');
@@ -182,8 +176,10 @@ export default function Documentos() {
 
   const carregarDocumentosCliente = async (clienteId) => {
     try {
-      const response = await axios.get(`${API_URL}/documentos/cliente/${clienteId}`);
-      setDocumentosCliente(response.data);
+      const data = await documentoService.listarDocumentosCliente(clienteId);
+      if (data) {
+        setDocumentosCliente(data);
+      }
     } catch (error) {
       console.error('Erro ao carregar documentos do cliente:', error);
       toast.error('Erro ao carregar documentos do cliente');
@@ -192,8 +188,10 @@ export default function Documentos() {
 
   const carregarDocumentosLicitacao = async (licitacaoId) => {
     try {
-      const response = await axios.get(`${API_URL}/documentos/licitacao/${licitacaoId}`);
-      setDocumentosLicitacao(response.data);
+      const data = await documentoService.listarDocumentosLicitacao(licitacaoId);
+      if (data) {
+        setDocumentosLicitacao(data);
+      }
     } catch (error) {
       console.error('Erro ao carregar documentos da licitação:', error);
       toast.error('Erro ao carregar documentos da licitação');
@@ -202,8 +200,10 @@ export default function Documentos() {
 
   const carregarRequisitosDocumentacao = async (licitacaoId) => {
     try {
-      const response = await axios.get(`${API_URL}/documentos/requisitos/${licitacaoId}`);
-      setRequisitosDocumentacao(response.data);
+      const data = await documentoService.listarRequisitosDocumentacao(licitacaoId);
+      if (data) {
+        setRequisitosDocumentacao(data);
+      }
     } catch (error) {
       console.error('Erro ao carregar requisitos de documentação:', error);
       toast.error('Erro ao carregar requisitos de documentação');
@@ -226,7 +226,7 @@ export default function Documentos() {
   const filtrarLicitacoes = () => {
     // Primeiro filtra por status "Em Andamento"
     const licitacoesEmAndamento = licitacoes.filter(licitacao => 
-      licitacao.status === 'Em Andamento'
+      licitacao.status === 'EM_ANDAMENTO'
     );
 
     if (!filtroLicitacao) {
@@ -244,21 +244,20 @@ export default function Documentos() {
 
   const handleUploadDocumentoCliente = async () => {
     try {
-      const formData = new FormData();
-      formData.append('arquivo', uploadData.arquivo);
-      formData.append('clienteId', clienteSelecionado);
-      formData.append('tipoDocumentoId', uploadData.tipo_documento_id);
-      formData.append('dataValidade', uploadData.data_validade?.toISOString());
-      formData.append('observacoes', uploadData.observacoes);
-
-      await axios.post(`${API_URL}/documentos/cliente`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+      await documentoService.uploadDocumentoCliente({
+        arquivo: uploadData.arquivo,
+        clienteId: clienteSelecionado,
+        tipoDocumentoId: uploadData.tipo_documento_id,
+        dataValidade: uploadData.data_validade,
+        observacoes: uploadData.observacoes,
+        nome: uploadData.nome,
+        tipo: uploadData.tipo
       });
 
-      toast.success('Documento enviado com sucesso');
+      toast.success('Documento enviado com sucesso!');
       setOpenUploadCliente(false);
-      carregarDocumentosCliente(clienteSelecionado);
       limparUploadData();
+      carregarDocumentosCliente(clienteSelecionado);
     } catch (error) {
       console.error('Erro ao enviar documento:', error);
       toast.error('Erro ao enviar documento');
@@ -267,94 +266,117 @@ export default function Documentos() {
 
   const handleUploadDocumentoLicitacao = async () => {
     try {
-      const formData = new FormData();
-      formData.append('arquivo', uploadData.arquivo);
-      formData.append('licitacaoId', licitacaoSelecionada);
-      formData.append('nome', uploadData.nome);
-      formData.append('tipo', uploadData.tipo);
-      formData.append('observacoes', uploadData.observacoes);
-
-      await axios.post(`${API_URL}/documentos/licitacao`, formData, {
-        headers: { 'Content-Type': 'multipart/form-data' }
+      await documentoService.uploadDocumentoLicitacao({
+        arquivo: uploadData.arquivo,
+        licitacaoId: licitacaoSelecionada,
+        tipoDocumentoId: uploadData.tipo_documento_id,
+        dataValidade: uploadData.data_validade,
+        observacoes: uploadData.observacoes,
+        nome: uploadData.nome,
+        tipo: uploadData.tipo
       });
 
-      toast.success('Documento enviado com sucesso');
+      toast.success('Documento enviado com sucesso!');
       setOpenUploadLicitacao(false);
-      carregarDocumentosLicitacao(licitacaoSelecionada);
-      carregarRequisitosDocumentacao(licitacaoSelecionada);
       limparUploadData();
+      carregarDocumentosLicitacao(licitacaoSelecionada);
     } catch (error) {
       console.error('Erro ao enviar documento:', error);
-      const mensagem = error.response?.data?.error || 'Erro ao enviar documento';
-      toast.error(mensagem);
+      toast.error('Erro ao enviar documento');
     }
   };
 
-  const handleExcluirDocumentoCliente = async (id) => {
-    try {
-      await axios.delete(`${API_URL}/documentos/cliente/${id}`);
-      toast.success('Documento excluído com sucesso');
-      carregarDocumentosCliente(clienteSelecionado);
-    } catch (error) {
-      console.error('Erro ao excluir documento:', error);
-      toast.error('Erro ao excluir documento');
+  const handleExcluirDocumentoCliente = async (id, arquivoUrl) => {
+    if (window.confirm('Tem certeza que deseja excluir este documento?')) {
+      try {
+        await documentoService.excluirDocumentoCliente(id, arquivoUrl);
+        toast.success('Documento excluído com sucesso!');
+        carregarDocumentosCliente(clienteSelecionado);
+      } catch (error) {
+        console.error('Erro ao excluir documento:', error);
+        toast.error('Erro ao excluir documento');
+      }
     }
   };
 
-  const handleExcluirDocumentoLicitacao = async (documento) => {
-    try {
-      // Se for um EDITAL, limpar os requisitos imediatamente na interface
-      if (documento.tipo === 'EDITAL') {
-        setRequisitosDocumentacao([]); // Limpa os requisitos imediatamente
-      }
-
-      // Excluir o documento
-      await axios.delete(`${API_URL}/documentos/licitacao/${documento.id}`);
-      
-      // Atualizar a lista de documentos
-      await carregarDocumentosLicitacao(licitacaoSelecionada);
-      
-      // Se era um EDITAL, garantir que os requisitos foram removidos
-      if (documento.tipo === 'EDITAL') {
-        // Forçar uma nova limpeza dos requisitos
-        setRequisitosDocumentacao([]);
-        
-        // Forçar uma atualização completa da licitação
-        const licitacaoId = licitacaoSelecionada;
-        setLicitacaoSelecionada('');
-        
-        // Pequeno delay para garantir que o estado foi atualizado
-        setTimeout(() => {
-          setLicitacaoSelecionada(licitacaoId);
-        }, 100);
-      }
-
-      toast.success('Documento excluído com sucesso');
-    } catch (error) {
-      console.error('Erro ao excluir documento:', error);
-      toast.error('Erro ao excluir documento');
-      
-      // Em caso de erro, recarregar os dados para garantir consistência
-      if (documento.tipo === 'EDITAL') {
-        await carregarRequisitosDocumentacao(licitacaoSelecionada);
+  const handleExcluirDocumentoLicitacao = async (id, arquivoUrl) => {
+    if (window.confirm('Tem certeza que deseja excluir este documento?')) {
+      try {
+        await documentoService.excluirDocumentoLicitacao(id, arquivoUrl);
+        toast.success('Documento excluído com sucesso!');
+        carregarDocumentosLicitacao(licitacaoSelecionada);
+      } catch (error) {
+        console.error('Erro ao excluir documento:', error);
+        toast.error('Erro ao excluir documento');
       }
     }
   };
 
   const handleAtualizarRequisito = async (id, atendido) => {
     try {
-      const payload = {
-        descricao: requisitosDocumentacao.find(r => r.id === id)?.descricao || '',
-        observacoes: requisitosDocumentacao.find(r => r.id === id)?.observacoes || '',
-        atendido: atendido,
-        licitacao_id: parseInt(licitacaoSelecionada)
-      };
-
-      await axios.put(`${API_URL}/documentos/requisitos/${id}`, payload);
-      await carregarRequisitosDocumentacao(licitacaoSelecionada);
+      await documentoService.atualizarRequisito(id, { atendido });
+      toast.success('Requisito atualizado com sucesso!');
+      carregarRequisitosDocumentacao(licitacaoSelecionada);
     } catch (error) {
-      console.error('Erro ao atualizar requisito:', error.response?.data || error);
-      toast.error(error.response?.data?.message || 'Erro ao atualizar requisito');
+      console.error('Erro ao atualizar requisito:', error);
+      toast.error('Erro ao atualizar requisito');
+    }
+  };
+
+  const handleAdicionarRequisito = async () => {
+    try {
+      await documentoService.criarRequisito({
+        ...novoRequisito,
+        licitacao_id: licitacaoSelecionada
+      });
+
+      toast.success('Requisito adicionado com sucesso!');
+      setOpenRequisitoDialog(false);
+      setNovoRequisito({
+        descricao: '',
+        observacoes: '',
+        atendido: false
+      });
+      carregarRequisitosDocumentacao(licitacaoSelecionada);
+    } catch (error) {
+      console.error('Erro ao adicionar requisito:', error);
+      toast.error('Erro ao adicionar requisito');
+    }
+  };
+
+  const handleEditarRequisito = async () => {
+    try {
+      await documentoService.atualizarRequisito(requisitoEmEdicao.id, {
+        descricao: novoRequisito.descricao,
+        observacoes: novoRequisito.observacoes,
+        atendido: novoRequisito.atendido
+      });
+
+      toast.success('Requisito atualizado com sucesso!');
+      setOpenRequisitoDialog(false);
+      setRequisitoEmEdicao(null);
+      setNovoRequisito({
+        descricao: '',
+        observacoes: '',
+        atendido: false
+      });
+      carregarRequisitosDocumentacao(licitacaoSelecionada);
+    } catch (error) {
+      console.error('Erro ao atualizar requisito:', error);
+      toast.error('Erro ao atualizar requisito');
+    }
+  };
+
+  const handleExcluirRequisito = async (id) => {
+    if (window.confirm('Tem certeza que deseja excluir este requisito?')) {
+      try {
+        await documentoService.excluirRequisito(id);
+        toast.success('Requisito excluído com sucesso!');
+        carregarRequisitosDocumentacao(licitacaoSelecionada);
+      } catch (error) {
+        console.error('Erro ao excluir requisito:', error);
+        toast.error('Erro ao excluir requisito');
+      }
     }
   };
 
@@ -375,70 +397,6 @@ export default function Documentos() {
 
   const handleChangeDocumentosTab = (event, newValue) => {
     setDocumentosTabValue(newValue);
-  };
-
-  const handleAdicionarRequisito = async () => {
-    try {
-      const response = await axios.post(`${API_URL}/documentos/requisitos/${licitacaoSelecionada}`, {
-        descricao: novoRequisito.descricao,
-        observacoes: novoRequisito.observacoes,
-        atendido: novoRequisito.atendido
-      });
-
-      if (response.data) {
-        toast.success('Requisito adicionado com sucesso');
-        setOpenRequisitoDialog(false);
-        setNovoRequisito({
-          descricao: '',
-          observacoes: '',
-          atendido: false
-        });
-        await carregarRequisitosDocumentacao(licitacaoSelecionada);
-      }
-    } catch (error) {
-      console.error('Erro ao adicionar requisito:', error);
-      const mensagemErro = error.response?.data?.error || 'Erro ao adicionar requisito';
-      toast.error(mensagemErro);
-    }
-  };
-
-  const handleEditarRequisito = async (requisito) => {
-    try {
-      const response = await axios.put(`${API_URL}/documentos/requisitos/${requisito.id}`, {
-        licitacao_id: licitacaoSelecionada,
-        descricao: novoRequisito.descricao,
-        observacoes: novoRequisito.observacoes,
-        atendido: novoRequisito.atendido
-      });
-
-      if (response.data) {
-        toast.success('Requisito atualizado com sucesso');
-        setOpenRequisitoDialog(false);
-        setRequisitoEmEdicao(null);
-        setNovoRequisito({
-          descricao: '',
-          observacoes: '',
-          atendido: false
-        });
-        await carregarRequisitosDocumentacao(licitacaoSelecionada);
-      }
-    } catch (error) {
-      console.error('Erro ao atualizar requisito:', error);
-      toast.error(error.response?.data?.message || 'Erro ao atualizar requisito');
-    }
-  };
-
-  const handleExcluirRequisito = async (id) => {
-    if (window.confirm('Tem certeza que deseja excluir este requisito?')) {
-      try {
-        await axios.delete(`${API_URL}/documentos/requisitos/${id}`);
-        toast.success('Requisito excluído com sucesso');
-        carregarRequisitosDocumentacao(licitacaoSelecionada);
-      } catch (error) {
-        console.error('Erro ao excluir requisito:', error);
-        toast.error('Erro ao excluir requisito');
-      }
-    }
   };
 
   const abrirDialogoEditarRequisito = (requisito) => {
@@ -607,7 +565,7 @@ export default function Documentos() {
                                   </Typography>
                                   <IconButton
                                     size="small"
-                                    onClick={() => handleExcluirDocumentoCliente(documento.id)}
+                                    onClick={() => handleExcluirDocumentoCliente(documento.id, documento.arquivo_url)}
                                     sx={{ color: 'error.main' }}
                                   >
                                     <DeleteIcon />
@@ -647,7 +605,7 @@ export default function Documentos() {
                                   variant="outlined"
                                   startIcon={<DescriptionIcon />}
                                   size="small"
-                                  onClick={() => downloadDocumento(documento.id, 'cliente', documento.nome_arquivo)}
+                                  onClick={() => downloadDocumento(documento.id, 'cliente', documento.arquivo_url)}
                                   fullWidth
                                 >
                                   Visualizar
@@ -808,13 +766,13 @@ export default function Documentos() {
                                   variant="contained"
                                 startIcon={<UploadIcon />}
                                   onClick={() => setOpenUploadLicitacao(true)}
-                                  disabled={licitacoes.find(l => l.id === licitacaoSelecionada)?.status !== 'Em Andamento'}
+                                  disabled={licitacoes.find(l => l.id === licitacaoSelecionada)?.status !== 'EM_ANDAMENTO'}
                                 >
                                 Upload de Documento
                                 </Button>
                           </Box>
 
-                          {licitacoes.find(l => l.id === licitacaoSelecionada)?.status !== 'Em Andamento' && (
+                          {licitacoes.find(l => l.id === licitacaoSelecionada)?.status !== 'EM_ANDAMENTO' && (
                             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                               Documentos só podem ser adicionados quando a licitação estiver Em Andamento
                             </Typography>
@@ -836,8 +794,8 @@ export default function Documentos() {
                                       <IconButton
                                         edge="end"
                                         aria-label="excluir"
-                                        onClick={() => handleExcluirDocumentoLicitacao(documento)}
-                                        disabled={licitacoes.find(l => l.id === licitacaoSelecionada)?.status !== 'Em Andamento'}
+                                        onClick={() => handleExcluirDocumentoLicitacao(documento.id, documento.arquivo_url)}
+                                        disabled={licitacoes.find(l => l.id === licitacaoSelecionada)?.status !== 'EM_ANDAMENTO'}
                                         sx={{ color: 'error.main' }}
                                       >
                                         <DeleteIcon />
@@ -875,7 +833,7 @@ export default function Documentos() {
                                       variant="outlined"
                                       size="small"
                                             startIcon={<DescriptionIcon />}
-                                            onClick={() => downloadDocumento(documento.id, 'licitacao', documento.nome_arquivo)}
+                                            onClick={() => downloadDocumento(documento.id, 'licitacao', documento.arquivo_url)}
                                             sx={{ mt: 1 }}
                                     >
                                             Visualizar Documento
@@ -918,13 +876,13 @@ export default function Documentos() {
                               variant="contained"
                               startIcon={<AddIcon />}
                               onClick={abrirDialogoNovoRequisito}
-                              disabled={licitacoes.find(l => l.id === licitacaoSelecionada)?.status !== 'Em Andamento'}
+                              disabled={licitacoes.find(l => l.id === licitacaoSelecionada)?.status !== 'EM_ANDAMENTO'}
                             >
                               Adicionar Requisito
                             </Button>
                           </Box>
 
-                          {licitacoes.find(l => l.id === licitacaoSelecionada)?.status !== 'Em Andamento' && (
+                          {licitacoes.find(l => l.id === licitacaoSelecionada)?.status !== 'EM_ANDAMENTO' && (
                             <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
                               Requisitos só podem ser adicionados quando a licitação estiver Em Andamento
                             </Typography>
@@ -989,20 +947,20 @@ export default function Documentos() {
                                       <Checkbox
                                         checked={requisito.atendido}
                                         onChange={(e) => handleAtualizarRequisito(requisito.id, e.target.checked)}
-                                        disabled={licitacoes.find(l => l.id === licitacaoSelecionada)?.status !== 'Em Andamento'}
+                                        disabled={licitacoes.find(l => l.id === licitacaoSelecionada)?.status !== 'EM_ANDAMENTO'}
                                         color="success"
                                       />
                                       <IconButton
                                         size="small"
                                         onClick={() => abrirDialogoEditarRequisito(requisito)}
-                                        disabled={licitacoes.find(l => l.id === licitacaoSelecionada)?.status !== 'Em Andamento'}
+                                        disabled={licitacoes.find(l => l.id === licitacaoSelecionada)?.status !== 'EM_ANDAMENTO'}
                                       >
                                         <EditIcon fontSize="small" />
                                       </IconButton>
                                       <IconButton
                                         size="small"
                                         onClick={() => handleExcluirRequisito(requisito.id)}
-                                        disabled={licitacoes.find(l => l.id === licitacaoSelecionada)?.status !== 'Em Andamento'}
+                                        disabled={licitacoes.find(l => l.id === licitacaoSelecionada)?.status !== 'EM_ANDAMENTO'}
                                         sx={{ color: 'error.main' }}
                                       >
                                         <DeleteIcon fontSize="small" />
@@ -1230,7 +1188,7 @@ export default function Documentos() {
           </Button>
           {requisitoEmEdicao ? (
             <Button
-              onClick={() => handleEditarRequisito(requisitoEmEdicao)}
+              onClick={handleEditarRequisito}
               variant="contained"
               color="primary"
               disabled={!novoRequisito.descricao}
