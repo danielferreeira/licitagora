@@ -154,7 +154,7 @@ export default function Fechamento() {
         lucro_final: lucroFinal,
         foi_ganha: dadosFechamento.foi_ganha,
         motivo_perda: dadosFechamento.foi_ganha ? null : dadosFechamento.motivo_perda.trim(),
-        status: 'FINALIZADA',
+        status: 'CONCLUIDA',
         data_fechamento: new Date().toISOString()
       };
 
@@ -323,7 +323,7 @@ export default function Fechamento() {
                 overflow: 'auto'
               }}>
                 {licitacoes
-                  .filter(l => l.status === 'FINALIZADA')
+                  .filter(l => l.status === 'CONCLUIDA')
                   .map((licitacao) => (
                     <ListItem
                       key={licitacao.id}

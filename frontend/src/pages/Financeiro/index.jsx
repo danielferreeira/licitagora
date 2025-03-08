@@ -62,7 +62,7 @@ export default function Financeiro() {
     try {
       const licitacoes = await licitacaoService.listarLicitacoes();
       const licitacoesFinalizadas = licitacoes.filter(
-        (licitacao) => licitacao.status === 'FINALIZADA'
+        (licitacao) => licitacao.status === 'CONCLUIDA'
       );
 
       const licitacoesGanhas = licitacoesFinalizadas.filter(

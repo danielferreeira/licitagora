@@ -284,7 +284,7 @@ export default function NovaLicitacao() {
         data_fim: licitacao.data_fim,
         valor_estimado: licitacao.valor_estimado,
         lucro_estimado: licitacao.lucro_estimado,
-        status: licitacao.status || 'EM_ANALISE',
+        status: 'EM_ANDAMENTO',
         ramos_atividade: licitacao.ramos_atividade,
         descricao: licitacao.descricao || null,
         requisitos: licitacao.requisitos || null,

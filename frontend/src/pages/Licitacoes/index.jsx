@@ -26,6 +26,7 @@ import {
   InputAdornment,
   Chip,
   Menu,
+  ListSubheader,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -67,23 +68,29 @@ const ramosAtividade = [
 ];
 
 const statusLicitacao = [
-  'EM_ANALISE',
   'EM_ANDAMENTO',
-  'FINALIZADA',
-  'CANCELADA'
+  'CONCLUIDA',
+  'CANCELADA',
+  'SUSPENSA',
+  'FRACASSADA',
+  'DESERTA'
 ];
 
 // Funções de formatação
 const getStatusDisplay = (status) => {
   switch (status) {
-    case 'EM_ANALISE':
-      return 'Em Análise';
     case 'EM_ANDAMENTO':
       return 'Em Andamento';
-    case 'FINALIZADA':
-      return 'Finalizada';
+    case 'CONCLUIDA':
+      return 'Concluída';
     case 'CANCELADA':
       return 'Cancelada';
+    case 'SUSPENSA':
+      return 'Suspensa';
+    case 'FRACASSADA':
+      return 'Fracassada';
+    case 'DESERTA':
+      return 'Deserta';
     default:
       return status;
   }
@@ -139,7 +146,6 @@ export default function Licitacoes() {
   const [showFilters, setShowFilters] = useState(!isMobile);
   const [filtros, setFiltros] = useState({
     cliente_id: '',
-    ramo_atividade: '',
     modalidade: '',
     status: '',
     data_inicio: null,
@@ -153,6 +159,7 @@ export default function Licitacoes() {
   const [loading, setLoading] = useState(false);
   const [anchorEl, setAnchorEl] = useState(null);
   const [selectedLicitacao, setSelectedLicitacao] = useState(null);
+  const [clienteSearch, setClienteSearch] = useState('');
 
   useEffect(() => {
     carregarDados();
@@ -161,16 +168,16 @@ export default function Licitacoes() {
   const carregarDados = async () => {
     setLoading(true);
     try {
-      const [licitacoesData, clientesData] = await Promise.all([
-        licitacaoService.listarLicitacoes(),
-        clienteService.listarClientes()
-      ]);
+      // Primeiro carrega os clientes
+      const clientesData = await clienteService.listarClientes();
+      setClientes(clientesData || []);
 
-      setClientes(clientesData);
-      setLicitacoes(licitacoesData);
+      // Depois carrega as licitações
+      const licitacoesData = await licitacaoService.listarLicitacoes();
+      setLicitacoes(licitacoesData || []);
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
-      toast.error('Erro ao carregar dados');
+      toast.error('Erro ao carregar dados: ' + error.message);
     } finally {
       setLoading(false);
     }
@@ -218,7 +225,6 @@ export default function Licitacoes() {
   const limparFiltros = () => {
     setFiltros({
       cliente_id: '',
-      ramo_atividade: '',
       modalidade: '',
       status: '',
       data_inicio: null,
@@ -232,40 +238,7 @@ export default function Licitacoes() {
   const aplicarFiltros = async () => {
     setLoading(true);
     try {
-      let query = licitacaoService.listarLicitacoes();
-
-      if (filtros.cliente_id) {
-        query = query.eq('cliente_id', filtros.cliente_id);
-      }
-      if (filtros.ramo_atividade) {
-        query = query.eq('ramo_atividade', filtros.ramo_atividade);
-      }
-      if (filtros.modalidade) {
-        query = query.eq('modalidade', filtros.modalidade);
-      }
-      if (filtros.status) {
-        query = query.eq('status', filtros.status);
-      }
-      if (filtros.data_inicio) {
-        query = query.gte('data_abertura', filtros.data_inicio.toISOString());
-      }
-      if (filtros.data_fim) {
-        query = query.lte('data_fim', filtros.data_fim.toISOString());
-      }
-      if (filtros.valor_min) {
-        const valorMin = parseFloat(filtros.valor_min.replace(/\./g, '').replace(',', '.'));
-        if (!isNaN(valorMin)) {
-          query = query.gte('valor_estimado', valorMin);
-        }
-      }
-      if (filtros.valor_max) {
-        const valorMax = parseFloat(filtros.valor_max.replace(/\./g, '').replace(',', '.'));
-        if (!isNaN(valorMax)) {
-          query = query.lte('valor_estimado', valorMax);
-        }
-      }
-
-      const data = await query;
+      const data = await licitacaoService.listarLicitacoes(filtros);
       setLicitacoes(data);
     } catch (error) {
       console.error('Erro ao aplicar filtros:', error);
@@ -306,6 +279,13 @@ export default function Licitacoes() {
     }
   };
 
+  const clientesFiltrados = clientes
+    .filter(cliente => 
+        cliente?.razao_social?.toLowerCase().includes(clienteSearch.toLowerCase()) ||
+        cliente?.cnpj?.includes(clienteSearch)
+    )
+    .sort((a, b) => a?.razao_social?.localeCompare(b?.razao_social) || 0);
+
   const renderFiltros = () => (
     <Paper 
       elevation={0} 
@@ -334,27 +314,27 @@ export default function Licitacoes() {
               onChange={(e) => handleFiltroChange('cliente_id', e.target.value)}
             >
               <MenuItem value="">Todos</MenuItem>
-              {clientes.map((cliente) => (
+              <ListSubheader>
+                <TextField
+                  size="small"
+                  fullWidth
+                  placeholder="Buscar cliente..."
+                  value={clienteSearch}
+                  onChange={(e) => setClienteSearch(e.target.value)}
+                  onClick={(e) => e.stopPropagation()}
+                  onKeyDown={(e) => e.stopPropagation()}
+                />
+              </ListSubheader>
+              {clientesFiltrados.map((cliente) => (
                 <MenuItem key={cliente.id} value={cliente.id}>
-                  {cliente.razao_social}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={4}>
-          <FormControl fullWidth>
-            <InputLabel>Ramo de Atividade</InputLabel>
-            <Select
-              value={filtros.ramo_atividade}
-              label="Ramo de Atividade"
-              onChange={(e) => handleFiltroChange('ramo_atividade', e.target.value)}
-            >
-              <MenuItem value="">Todos</MenuItem>
-              {ramosAtividade.map((ramo) => (
-                <MenuItem key={ramo} value={ramo}>
-                  {getRamoAtividadeDisplay(ramo)}
+                  <Box>
+                    <Typography variant="body1">
+                      {cliente.razao_social}
+                    </Typography>
+                    <Typography variant="caption" color="textSecondary">
+                      CNPJ: {cliente.cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, "$1.$2.$3/$4-$5")}
+                    </Typography>
+                  </Box>
                 </MenuItem>
               ))}
             </Select>
@@ -473,11 +453,14 @@ export default function Licitacoes() {
           </Box>
           <Box sx={{ display: 'flex', gap: 1 }}>
             <Chip
-              label={getStatusDisplay(licitacao.status)}
+              label={getStatusDisplay(licitacao.status || 'EM_ANDAMENTO')}
               color={
-                licitacao.status === 'FINALIZADA' ? (licitacao.foi_ganha ? 'success' : 'error') :
+                licitacao.status === 'CONCLUIDA' ? (licitacao.foi_ganha ? 'success' : 'error') :
                 licitacao.status === 'EM_ANDAMENTO' ? 'primary' :
                 licitacao.status === 'CANCELADA' ? 'error' :
+                licitacao.status === 'SUSPENSA' ? 'warning' :
+                licitacao.status === 'FRACASSADA' ? 'error' :
+                licitacao.status === 'DESERTA' ? 'error' :
                 'default'
               }
               size="small"
@@ -629,11 +612,14 @@ export default function Licitacoes() {
                 <TableCell>{formatarData(licitacao.data_abertura)}</TableCell>
                 <TableCell>
                   <Chip
-                          label={getStatusDisplay(licitacao.status)}
+                          label={getStatusDisplay(licitacao.status || 'EM_ANDAMENTO')}
                           color={
-                            licitacao.status === 'FINALIZADA' ? (licitacao.foi_ganha ? 'success' : 'error') :
+                            licitacao.status === 'CONCLUIDA' ? (licitacao.foi_ganha ? 'success' : 'error') :
                             licitacao.status === 'EM_ANDAMENTO' ? 'primary' :
                             licitacao.status === 'CANCELADA' ? 'error' :
+                            licitacao.status === 'SUSPENSA' ? 'warning' :
+                            licitacao.status === 'FRACASSADA' ? 'error' :
+                            licitacao.status === 'DESERTA' ? 'error' :
                             'default'
                           }
                     size="small"

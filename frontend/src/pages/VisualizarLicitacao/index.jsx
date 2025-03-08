@@ -30,14 +30,18 @@ import { clienteService, licitacaoService, documentoService } from '../../servic
 // Funções de formatação
 const getStatusDisplay = (status) => {
   switch (status) {
-    case 'EM_ANALISE':
-      return 'Em Análise';
     case 'EM_ANDAMENTO':
       return 'Em Andamento';
-    case 'FINALIZADA':
-      return 'Finalizada';
+    case 'CONCLUIDA':
+      return 'Concluída';
     case 'CANCELADA':
       return 'Cancelada';
+    case 'SUSPENSA':
+      return 'Suspensa';
+    case 'FRACASSADA':
+      return 'Fracassada';
+    case 'DESERTA':
+      return 'Deserta';
     default:
       return status;
   }
@@ -154,14 +158,16 @@ export default function VisualizarLicitacao() {
 
   const getStatusColor = (status) => {
     switch (status) {
-      case 'EM_ANALISE':
-        return 'warning';
       case 'EM_ANDAMENTO':
         return 'info';
-      case 'FINALIZADA':
+      case 'CONCLUIDA':
         return 'success';
       case 'CANCELADA':
+      case 'FRACASSADA':
+      case 'DESERTA':
         return 'error';
+      case 'SUSPENSA':
+        return 'warning';
       default:
         return 'default';
     }

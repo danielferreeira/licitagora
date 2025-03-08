@@ -36,14 +36,18 @@ import { clienteService, licitacaoService } from '../../services/supabase';
 // Funções de formatação
 const getStatusDisplay = (status) => {
   switch (status) {
-    case 'EM_ANALISE':
-      return 'Em Análise';
     case 'EM_ANDAMENTO':
       return 'Em Andamento';
-    case 'FINALIZADA':
-      return 'Finalizada';
+    case 'CONCLUIDA':
+      return 'Concluída';
     case 'CANCELADA':
       return 'Cancelada';
+    case 'SUSPENSA':
+      return 'Suspensa';
+    case 'FRACASSADA':
+      return 'Fracassada';
+    case 'DESERTA':
+      return 'Deserta';
     default:
       return status;
   }
@@ -168,7 +172,7 @@ export default function BuscarLicitacoes() {
       const novaLicitacao = {
         ...licitacaoSelecionada,
         cliente_id: clienteSelecionado,
-        status: 'EM_ANALISE',
+        status: 'EM_ANDAMENTO',
         data_cadastro: new Date().toISOString()
       };
 

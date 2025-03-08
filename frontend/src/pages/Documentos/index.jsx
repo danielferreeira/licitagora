@@ -108,7 +108,7 @@ export default function Documentos() {
     data_validade: null,
     observacoes: '',
     nome: '',
-    tipo: 'DOCUMENTO'
+    uploading: false
   });
 
   useEffect(() => {
@@ -243,6 +243,27 @@ export default function Documentos() {
   };
 
   const handleUploadDocumentoCliente = async () => {
+    if (!uploadData.arquivo || !uploadData.tipo_documento_id) {
+      toast.error('Selecione um arquivo e um tipo de documento');
+      return;
+    }
+
+    // Validar extensão do arquivo
+    const extensoesPermitidas = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png'];
+    const extensao = uploadData.arquivo.name.split('.').pop().toLowerCase();
+    if (!extensoesPermitidas.includes(extensao)) {
+      toast.error('Tipo de arquivo não permitido. Use: PDF, DOC, DOCX, XLS, XLSX, JPG, JPEG ou PNG');
+      return;
+    }
+
+    // Validar tamanho do arquivo (máximo 10MB)
+    const tamanhoMaximo = 10 * 1024 * 1024; // 10MB em bytes
+    if (uploadData.arquivo.size > tamanhoMaximo) {
+      toast.error('O arquivo é muito grande. Tamanho máximo: 10MB');
+      return;
+    }
+
+    setUploadData(prev => ({ ...prev, uploading: true }));
     try {
       await documentoService.uploadDocumentoCliente({
         arquivo: uploadData.arquivo,
@@ -250,8 +271,7 @@ export default function Documentos() {
         tipoDocumentoId: uploadData.tipo_documento_id,
         dataValidade: uploadData.data_validade,
         observacoes: uploadData.observacoes,
-        nome: uploadData.nome,
-        tipo: uploadData.tipo
+        nome: uploadData.arquivo.name
       });
 
       toast.success('Documento enviado com sucesso!');
@@ -260,11 +280,34 @@ export default function Documentos() {
       carregarDocumentosCliente(clienteSelecionado);
     } catch (error) {
       console.error('Erro ao enviar documento:', error);
-      toast.error('Erro ao enviar documento');
+      toast.error('Erro ao enviar documento: ' + error.message);
+    } finally {
+      setUploadData(prev => ({ ...prev, uploading: false }));
     }
   };
 
   const handleUploadDocumentoLicitacao = async () => {
+    if (!uploadData.arquivo || !uploadData.tipo_documento_id || !uploadData.nome) {
+      toast.error('Preencha todos os campos obrigatórios');
+      return;
+    }
+
+    // Validar extensão do arquivo
+    const extensoesPermitidas = ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'jpg', 'jpeg', 'png'];
+    const extensao = uploadData.arquivo.name.split('.').pop().toLowerCase();
+    if (!extensoesPermitidas.includes(extensao)) {
+      toast.error('Tipo de arquivo não permitido. Use: PDF, DOC, DOCX, XLS, XLSX, JPG, JPEG ou PNG');
+      return;
+    }
+
+    // Validar tamanho do arquivo (máximo 10MB)
+    const tamanhoMaximo = 10 * 1024 * 1024; // 10MB em bytes
+    if (uploadData.arquivo.size > tamanhoMaximo) {
+      toast.error('O arquivo é muito grande. Tamanho máximo: 10MB');
+      return;
+    }
+
+    setUploadData(prev => ({ ...prev, uploading: true }));
     try {
       await documentoService.uploadDocumentoLicitacao({
         arquivo: uploadData.arquivo,
@@ -272,8 +315,7 @@ export default function Documentos() {
         tipoDocumentoId: uploadData.tipo_documento_id,
         dataValidade: uploadData.data_validade,
         observacoes: uploadData.observacoes,
-        nome: uploadData.nome,
-        tipo: uploadData.tipo
+        nome: uploadData.nome
       });
 
       toast.success('Documento enviado com sucesso!');
@@ -282,7 +324,9 @@ export default function Documentos() {
       carregarDocumentosLicitacao(licitacaoSelecionada);
     } catch (error) {
       console.error('Erro ao enviar documento:', error);
-      toast.error('Erro ao enviar documento');
+      toast.error('Erro ao enviar documento: ' + error.message);
+    } finally {
+      setUploadData(prev => ({ ...prev, uploading: false }));
     }
   };
 
@@ -387,7 +431,7 @@ export default function Documentos() {
       data_validade: null,
       observacoes: '',
       nome: '',
-      tipo: 'DOCUMENTO'
+      uploading: false
     });
   };
 
@@ -1005,11 +1049,11 @@ export default function Documentos() {
       </Paper>
 
       {/* Upload Dialogs */}
-      <Dialog open={openUploadCliente} onClose={() => setOpenUploadCliente(false)} maxWidth="sm" fullWidth>
+      <Dialog open={openUploadCliente} onClose={() => !uploadData.uploading && setOpenUploadCliente(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Adicionar Documento do Cliente</DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <FormControl fullWidth>
+            <FormControl fullWidth required>
               <InputLabel>Tipo de Documento</InputLabel>
               <Select
                 value={uploadData.tipo_documento_id}
@@ -1045,34 +1089,52 @@ export default function Documentos() {
               component="label"
               startIcon={<UploadIcon />}
               fullWidth
+              disabled={uploadData.uploading}
             >
               Selecionar Arquivo
               <input
                 type="file"
                 hidden
-                onChange={(e) => setUploadData({ ...uploadData, arquivo: e.target.files[0] })}
+                onChange={(e) => {
+                  const arquivo = e.target.files[0];
+                  if (arquivo) {
+                    setUploadData(prev => ({ 
+                      ...prev, 
+                      arquivo,
+                      nome: arquivo.name 
+                    }));
+                  }
+                }}
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
               />
             </Button>
             {uploadData.arquivo && (
-              <Typography variant="body2" color="text.secondary">
-                Arquivo selecionado: {uploadData.arquivo.name}
-              </Typography>
+              <Box>
+                <Typography variant="body2" color="text.secondary">
+                  Arquivo selecionado: {uploadData.arquivo.name}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Tamanho: {(uploadData.arquivo.size / (1024 * 1024)).toFixed(2)}MB
+                </Typography>
+              </Box>
             )}
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenUploadCliente(false)}>Cancelar</Button>
+          <Button onClick={() => setOpenUploadCliente(false)} disabled={uploadData.uploading}>
+            Cancelar
+          </Button>
           <Button
             onClick={handleUploadDocumentoCliente}
             variant="contained"
-            disabled={!uploadData.arquivo || !uploadData.tipo_documento_id}
+            disabled={!uploadData.arquivo || !uploadData.tipo_documento_id || uploadData.uploading}
           >
-            Enviar
+            {uploadData.uploading ? 'Enviando...' : 'Enviar'}
           </Button>
         </DialogActions>
       </Dialog>
 
-      <Dialog open={openUploadLicitacao} onClose={() => setOpenUploadLicitacao(false)} maxWidth="sm" fullWidth>
+      <Dialog open={openUploadLicitacao} onClose={() => !uploadData.uploading && setOpenUploadLicitacao(false)} maxWidth="sm" fullWidth>
         <DialogTitle>Adicionar Documento da Licitação</DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
@@ -1081,19 +1143,30 @@ export default function Documentos() {
               value={uploadData.nome}
               onChange={(e) => setUploadData({ ...uploadData, nome: e.target.value })}
               fullWidth
+              required
             />
 
-            <FormControl fullWidth>
-              <InputLabel>Tipo</InputLabel>
+            <FormControl fullWidth required>
+              <InputLabel>Tipo de Documento</InputLabel>
               <Select
-                value={uploadData.tipo}
-                onChange={(e) => setUploadData({ ...uploadData, tipo: e.target.value })}
-                label="Tipo"
+                value={uploadData.tipo_documento_id}
+                onChange={(e) => setUploadData({ ...uploadData, tipo_documento_id: e.target.value })}
+                label="Tipo de Documento"
               >
-                <MenuItem value="EDITAL">Edital</MenuItem>
-                <MenuItem value="DOCUMENTO">Documento</MenuItem>
+                {tiposDocumentos.map((tipo) => (
+                  <MenuItem key={tipo.id} value={tipo.id}>
+                    {tipo.nome}
+                  </MenuItem>
+                ))}
               </Select>
             </FormControl>
+
+            <DatePicker
+              label="Data de Validade"
+              value={uploadData.data_validade}
+              onChange={(newValue) => setUploadData({ ...uploadData, data_validade: newValue })}
+              slotProps={{ textField: { fullWidth: true } }}
+            />
 
             <TextField
               label="Observações"
@@ -1109,29 +1182,46 @@ export default function Documentos() {
               component="label"
               startIcon={<UploadIcon />}
               fullWidth
+              disabled={uploadData.uploading}
             >
               Selecionar Arquivo
               <input
                 type="file"
                 hidden
-                onChange={(e) => setUploadData({ ...uploadData, arquivo: e.target.files[0] })}
+                onChange={(e) => {
+                  const arquivo = e.target.files[0];
+                  if (arquivo) {
+                    setUploadData(prev => ({ 
+                      ...prev, 
+                      arquivo 
+                    }));
+                  }
+                }}
+                accept=".pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png"
               />
             </Button>
             {uploadData.arquivo && (
-              <Typography variant="body2" color="text.secondary">
-                Arquivo selecionado: {uploadData.arquivo.name}
-              </Typography>
+              <Box>
+                <Typography variant="body2" color="text.secondary">
+                  Arquivo selecionado: {uploadData.arquivo.name}
+                </Typography>
+                <Typography variant="body2" color="text.secondary">
+                  Tamanho: {(uploadData.arquivo.size / (1024 * 1024)).toFixed(2)}MB
+                </Typography>
+              </Box>
             )}
           </Box>
         </DialogContent>
         <DialogActions>
-          <Button onClick={() => setOpenUploadLicitacao(false)}>Cancelar</Button>
+          <Button onClick={() => setOpenUploadLicitacao(false)} disabled={uploadData.uploading}>
+            Cancelar
+          </Button>
           <Button
             onClick={handleUploadDocumentoLicitacao}
             variant="contained"
-            disabled={!uploadData.arquivo || !uploadData.nome}
+            disabled={!uploadData.arquivo || !uploadData.tipo_documento_id || !uploadData.nome || uploadData.uploading}
           >
-            Enviar
+            {uploadData.uploading ? 'Enviando...' : 'Enviar'}
           </Button>
         </DialogActions>
       </Dialog>

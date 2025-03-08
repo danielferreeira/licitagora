@@ -77,32 +77,41 @@ export default function Clientes() {
   const carregarClientes = async () => {
     setLoading(true);
     try {
-      let query = clienteService.listarClientes();
+        const data = await clienteService.listarClientes();
+        let clientesFiltrados = data || [];
 
-      // Aplicar filtros
-      if (filtros.razao_social) {
-        query = query.ilike('razao_social', `%${filtros.razao_social}%`);
-      }
-      if (filtros.cnpj) {
-        query = query.ilike('cnpj', `%${filtros.cnpj}%`);
-      }
-      if (filtros.cidade) {
-        query = query.ilike('cidade', `%${filtros.cidade}%`);
-      }
-      if (filtros.estado) {
-        query = query.eq('estado', filtros.estado);
-      }
-      if (filtros.ramo_atividade) {
-        query = query.contains('ramos_atividade', [filtros.ramo_atividade]);
-      }
+        if (filtros.razao_social) {
+            clientesFiltrados = clientesFiltrados.filter(cliente =>
+                cliente.razao_social.toLowerCase().includes(filtros.razao_social.toLowerCase())
+            );
+        }
+        if (filtros.cnpj) {
+            clientesFiltrados = clientesFiltrados.filter(cliente =>
+                cliente.cnpj.includes(filtros.cnpj)
+            );
+        }
+        if (filtros.cidade) {
+            clientesFiltrados = clientesFiltrados.filter(cliente =>
+                cliente.cidade.toLowerCase().includes(filtros.cidade.toLowerCase())
+            );
+        }
+        if (filtros.estado) {
+            clientesFiltrados = clientesFiltrados.filter(cliente =>
+                cliente.estado === filtros.estado
+            );
+        }
+        if (filtros.ramo_atividade) {
+            clientesFiltrados = clientesFiltrados.filter(cliente =>
+                cliente.ramos_atividade.includes(filtros.ramo_atividade)
+            );
+        }
 
-      const data = await query;
-      setClientes(data);
+        setClientes(clientesFiltrados);
     } catch (error) {
-      console.error('Erro ao carregar clientes:', error);
-      toast.error('Erro ao carregar clientes');
+        console.error('Erro ao carregar clientes:', error);
+        toast.error('Erro ao carregar clientes: ' + error.message);
     } finally {
-      setLoading(false);
+        setLoading(false);
     }
   };
 

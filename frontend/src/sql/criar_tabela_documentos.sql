@@ -6,23 +6,20 @@ SECURITY DEFINER
 AS $$
 BEGIN
     -- Criar enum para tipo de documento
-    DO $$
-    BEGIN
-        CREATE TYPE tipo_documento AS ENUM (
-            'CONTRATO',
-            'EDITAL',
-            'PROPOSTA',
-            'HABILITACAO',
-            'RECURSO',
-            'IMPUGNACAO',
-            'OUTROS'
-        );
-    EXCEPTION
-        WHEN duplicate_object THEN null;
-    END $$;
+    DROP TYPE IF EXISTS tipo_documento CASCADE;
+    CREATE TYPE tipo_documento AS ENUM (
+        'CONTRATO',
+        'EDITAL',
+        'PROPOSTA',
+        'HABILITACAO',
+        'RECURSO',
+        'IMPUGNACAO',
+        'OUTROS'
+    );
 
     -- Criar tabela de tipos de documentos
-    CREATE TABLE IF NOT EXISTS public.tipos_documentos (
+    DROP TABLE IF EXISTS public.tipos_documentos CASCADE;
+    CREATE TABLE public.tipos_documentos (
         id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
         nome VARCHAR(100) NOT NULL UNIQUE,
         descricao TEXT,
@@ -31,13 +28,37 @@ BEGIN
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );
 
+    -- Inserir tipos de documentos padrão
+    INSERT INTO public.tipos_documentos (nome, descricao, obrigatorio)
+    VALUES
+        ('Contrato Social', 'Documento constitutivo da empresa', true),
+        ('Certidão Negativa Federal', 'Certidão negativa de débitos federais', true),
+        ('Certidão Negativa Estadual', 'Certidão negativa de débitos estaduais', true),
+        ('Certidão Negativa Municipal', 'Certidão negativa de débitos municipais', true),
+        ('CNPJ', 'Comprovante de inscrição e situação cadastral', true),
+        ('Inscrição Estadual', 'Comprovante de inscrição estadual', false),
+        ('Inscrição Municipal', 'Comprovante de inscrição municipal', false),
+        ('Atestado de Capacidade Técnica', 'Atestado comprovando experiência prévia', false),
+        ('Balanço Patrimonial', 'Demonstrações contábeis do último exercício', true),
+        ('Certidão Negativa Trabalhista', 'Certidão negativa de débitos trabalhistas', true),
+        ('FGTS', 'Certificado de regularidade do FGTS', true),
+        ('RG dos Sócios', 'Documento de identificação dos sócios', true),
+        ('CPF dos Sócios', 'CPF dos sócios', true),
+        ('Alvará de Funcionamento', 'Licença para funcionamento', true),
+        ('Certificado de Registro Cadastral', 'CRC do órgão licitante', false),
+        ('Procuração', 'Documento de representação legal', false),
+        ('Outros', 'Outros documentos', false)
+    ON CONFLICT (nome) DO UPDATE SET
+        descricao = EXCLUDED.descricao,
+        obrigatorio = EXCLUDED.obrigatorio;
+
     -- Criar tabela de documentos do cliente
-    CREATE TABLE IF NOT EXISTS public.documentos_cliente (
+    DROP TABLE IF EXISTS public.documentos_cliente CASCADE;
+    CREATE TABLE public.documentos_cliente (
         id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
         cliente_id UUID NOT NULL REFERENCES public.clientes(id) ON DELETE CASCADE,
         tipo_documento_id UUID NOT NULL REFERENCES public.tipos_documentos(id),
         nome VARCHAR(200) NOT NULL,
-        tipo tipo_documento NOT NULL,
         arquivo_url TEXT NOT NULL,
         data_validade TIMESTAMP WITH TIME ZONE,
         observacoes TEXT,
@@ -46,12 +67,12 @@ BEGIN
     );
 
     -- Criar tabela de documentos da licitação
-    CREATE TABLE IF NOT EXISTS public.documentos_licitacao (
+    DROP TABLE IF EXISTS public.documentos_licitacao CASCADE;
+    CREATE TABLE public.documentos_licitacao (
         id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
         licitacao_id UUID NOT NULL REFERENCES public.licitacoes(id) ON DELETE CASCADE,
         tipo_documento_id UUID NOT NULL REFERENCES public.tipos_documentos(id),
         nome VARCHAR(200) NOT NULL,
-        tipo tipo_documento NOT NULL,
         arquivo_url TEXT NOT NULL,
         data_validade TIMESTAMP WITH TIME ZONE,
         observacoes TEXT,
@@ -60,7 +81,8 @@ BEGIN
     );
 
     -- Criar tabela de requisitos de documentação
-    CREATE TABLE IF NOT EXISTS public.requisitos_documentacao (
+    DROP TABLE IF EXISTS public.requisitos_documentacao CASCADE;
+    CREATE TABLE public.requisitos_documentacao (
         id UUID DEFAULT gen_random_uuid() PRIMARY KEY,
         licitacao_id UUID NOT NULL REFERENCES public.licitacoes(id) ON DELETE CASCADE,
         tipo_documento_id UUID NOT NULL REFERENCES public.tipos_documentos(id),

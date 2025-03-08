@@ -5,7 +5,8 @@ CREATE OR REPLACE FUNCTION public.buscar_documentos_vencimento(
 RETURNS TABLE (
     id UUID,
     nome VARCHAR(200),
-    tipo tipo_documento,
+    tipo_documento_id UUID,
+    tipo_documento_nome VARCHAR(100),
     data_validade TIMESTAMP WITH TIME ZONE,
     dias_para_vencer INTEGER,
     cliente_id UUID,
@@ -19,7 +20,8 @@ AS $$
     SELECT 
         d.id,
         d.nome,
-        d.tipo,
+        d.tipo_documento_id,
+        td.nome as tipo_documento_nome,
         d.data_validade,
         EXTRACT(DAY FROM (d.data_validade - CURRENT_TIMESTAMP))::INTEGER as dias_para_vencer,
         c.id as cliente_id,
@@ -28,6 +30,7 @@ AS $$
         NULL::VARCHAR as licitacao_numero
     FROM documentos_cliente d
     JOIN clientes c ON c.id = d.cliente_id
+    JOIN tipos_documentos td ON td.id = d.tipo_documento_id
     WHERE 
         d.data_validade IS NOT NULL 
         AND d.data_validade <= (CURRENT_TIMESTAMP + (p_dias_alerta || ' days')::INTERVAL)
@@ -35,7 +38,8 @@ AS $$
     SELECT 
         d.id,
         d.nome,
-        d.tipo,
+        d.tipo_documento_id,
+        td.nome as tipo_documento_nome,
         d.data_validade,
         EXTRACT(DAY FROM (d.data_validade - CURRENT_TIMESTAMP))::INTEGER as dias_para_vencer,
         NULL::UUID as cliente_id,
@@ -44,6 +48,7 @@ AS $$
         l.numero as licitacao_numero
     FROM documentos_licitacao d
     JOIN licitacoes l ON l.id = d.licitacao_id
+    JOIN tipos_documentos td ON td.id = d.tipo_documento_id
     WHERE 
         d.data_validade IS NOT NULL 
         AND d.data_validade <= (CURRENT_TIMESTAMP + (p_dias_alerta || ' days')::INTERVAL)
@@ -119,5 +124,90 @@ BEGIN
     FROM public.prazos
     WHERE created_at >= NOW() - INTERVAL '5 minutes'
     ORDER BY data_prazo;
+END;
+$$;
+
+-- Função para extrair e processar requisitos do edital
+CREATE OR REPLACE FUNCTION public.processar_requisitos_edital(
+    p_texto TEXT,
+    p_licitacao_id UUID
+)
+RETURNS SETOF public.requisitos_documentacao
+LANGUAGE plpgsql
+SECURITY DEFINER
+AS $$
+DECLARE
+    v_linha TEXT;
+    v_requisito TEXT := '';
+    v_capturando_requisitos BOOLEAN := false;
+    v_contador INTEGER := 0;
+BEGIN
+    -- Processar o texto linha por linha
+    FOR v_linha IN SELECT unnest(string_to_array(p_texto, E'\n')) LOOP
+        -- Converter para minúsculo para comparação
+        v_linha := trim(v_linha);
+        
+        -- Identificar início de seção de requisitos
+        IF v_linha ~* '(documentação|habilitação|qualificação|requisitos)' THEN
+            v_capturando_requisitos := true;
+            CONTINUE;
+        END IF;
+
+        -- Identificar fim de seção de requisitos
+        IF v_linha ~* '(proposta|preço|pagamento)' THEN
+            v_capturando_requisitos := false;
+        END IF;
+
+        -- Processar linha se estiver capturando requisitos
+        IF v_capturando_requisitos AND length(v_linha) > 0 THEN
+            -- Verificar se é uma nova linha de requisito
+            IF v_linha ~ '^[0-9\.\-]+\s' THEN
+                -- Se já tiver um requisito acumulado, inserir
+                IF length(v_requisito) > 0 THEN
+                    INSERT INTO public.requisitos_documentacao (
+                        licitacao_id,
+                        descricao,
+                        atendido,
+                        ordem
+                    ) VALUES (
+                        p_licitacao_id,
+                        trim(v_requisito),
+                        false,
+                        v_contador
+                    )
+                    RETURNING * INTO v_requisito;
+
+                    RETURN NEXT v_requisito;
+                    v_contador := v_contador + 1;
+                END IF;
+                
+                -- Iniciar novo requisito
+                v_requisito := v_linha;
+            ELSE
+                -- Continuar requisito atual
+                v_requisito := v_requisito || ' ' || v_linha;
+            END IF;
+        END IF;
+    END LOOP;
+
+    -- Inserir último requisito se houver
+    IF length(v_requisito) > 0 THEN
+        INSERT INTO public.requisitos_documentacao (
+            licitacao_id,
+            descricao,
+            atendido,
+            ordem
+        ) VALUES (
+            p_licitacao_id,
+            trim(v_requisito),
+            false,
+            v_contador
+        )
+        RETURNING * INTO v_requisito;
+
+        RETURN NEXT v_requisito;
+    END IF;
+
+    RETURN;
 END;
 $$; 
