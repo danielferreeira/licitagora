@@ -8,5 +8,10 @@ export default defineConfig({
     rollupOptions: {
       input: 'src/main.jsx'
     }
-  }
+  },
+  server: {
+    port: 5173,
+    host: true
+  },
+  base: '/'
 })
