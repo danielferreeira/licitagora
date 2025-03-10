@@ -28,6 +28,8 @@ CREATE TABLE requisitos_documentacao (
     descricao TEXT NOT NULL,
     status status_requisito NOT NULL DEFAULT 'PENDENTE',
     observacoes TEXT,
+    atendido BOOLEAN DEFAULT false,
+    ordem INTEGER DEFAULT 0,
     created_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW(),
     CONSTRAINT fk_licitacao
@@ -39,6 +41,7 @@ CREATE TABLE requisitos_documentacao (
 -- Criar índices
 CREATE INDEX idx_requisitos_licitacao ON requisitos_documentacao(licitacao_id);
 CREATE INDEX idx_requisitos_status ON requisitos_documentacao(status);
+CREATE INDEX idx_requisitos_ordem ON requisitos_documentacao(ordem);
 
 -- Criar trigger para atualizar updated_at
 DROP TRIGGER IF EXISTS set_timestamp_requisitos_documentacao ON requisitos_documentacao;

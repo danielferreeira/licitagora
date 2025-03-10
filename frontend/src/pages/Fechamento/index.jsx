@@ -21,16 +21,22 @@ import {
   ListItemText,
   Chip,
   InputAdornment,
+  Tooltip,
+  Divider,
+  Alert,
 } from '@mui/material';
 import {
   Search as SearchIcon,
   Clear as ClearIcon,
   CheckCircle as CheckCircleIcon,
   Cancel as CancelIcon,
+  CalendarToday as CalendarIcon,
+  AttachMoney as MoneyIcon,
+  Info as InfoIcon,
 } from '@mui/icons-material';
 import { toast } from 'react-toastify';
 import { licitacaoService } from '../../services/supabase';
-import { formatCurrency } from '../../utils/format';
+import { formatCurrency, formatDate } from '../../utils/format';
 
 // Funções de manipulação de valores monetários
 const formatarValorMonetario = (valor) => {
@@ -76,9 +82,10 @@ const formatarNumeroParaExibicao = (numero) => {
   return Math.floor(Number(numero)).toString();
 };
 
-// Função para converter valor para número
-const parseCurrencyValue = (value) => {
-  return converterParaNumero(value);
+// Função para calcular variação percentual
+const calcularVariacao = (valorFinal, valorEstimado) => {
+  if (!valorFinal || !valorEstimado) return 0;
+  return ((valorFinal - valorEstimado) / valorEstimado) * 100;
 };
 
 export default function Fechamento() {
@@ -90,8 +97,10 @@ export default function Fechamento() {
   const [dadosFechamento, setDadosFechamento] = useState({
     valor_final: '',
     lucro_final: '',
-    foi_ganha: '',
-    motivo_perda: ''
+    foi_ganha: null,
+    motivo_perda: '',
+    observacoes: '',
+    data_fechamento: new Date().toISOString().split('T')[0]
   });
 
   useEffect(() => {
@@ -139,7 +148,7 @@ export default function Fechamento() {
         return;
       }
 
-      if (typeof dadosFechamento.foi_ganha !== 'boolean') {
+      if (dadosFechamento.foi_ganha === null) {
         toast.error('Por favor, selecione se a licitação foi ganha ou perdida');
         return;
       }
@@ -149,13 +158,20 @@ export default function Fechamento() {
         return;
       }
 
+      // Validar se o lucro não é maior que o valor final
+      if (lucroFinal > valorFinal) {
+        toast.error('O lucro não pode ser maior que o valor final');
+        return;
+      }
+
       const dadosParaEnviar = {
         valor_final: valorFinal,
         lucro_final: lucroFinal,
         foi_ganha: dadosFechamento.foi_ganha,
         motivo_perda: dadosFechamento.foi_ganha ? null : dadosFechamento.motivo_perda.trim(),
+        observacoes: dadosFechamento.observacoes?.trim() || null,
         status: 'CONCLUIDA',
-        data_fechamento: new Date().toISOString()
+        data_fechamento: dadosFechamento.data_fechamento
       };
 
       const licitacaoAtualizada = await licitacaoService.atualizarLicitacao(
@@ -173,8 +189,10 @@ export default function Fechamento() {
       setDadosFechamento({
         valor_final: '',
         lucro_final: '',
-        foi_ganha: '',
-        motivo_perda: ''
+        foi_ganha: null,
+        motivo_perda: '',
+        observacoes: '',
+        data_fechamento: new Date().toISOString().split('T')[0]
       });
       toast.success('Licitação fechada com sucesso!');
     } catch (error) {
@@ -190,8 +208,10 @@ export default function Fechamento() {
     setDadosFechamento({
       valor_final: '',
       lucro_final: '',
-      foi_ganha: '',
-      motivo_perda: ''
+      foi_ganha: null,
+      motivo_perda: '',
+      observacoes: '',
+      data_fechamento: new Date().toISOString().split('T')[0]
     });
     
     // Se tiver valores estimados, formata para exibição
@@ -281,11 +301,24 @@ export default function Fechamento() {
                           <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
                             {licitacao.numero}
                           </Typography>
-                          <Chip
-                            label={formatCurrency(licitacao.valor_estimado)}
-                            size="small"
-                            color="primary"
-                          />
+                          <Box sx={{ display: 'flex', gap: 1 }}>
+                            <Tooltip title="Data de Abertura">
+                              <Chip
+                                icon={<CalendarIcon />}
+                                label={formatDate(licitacao.data_abertura)}
+                                size="small"
+                                color="default"
+                              />
+                            </Tooltip>
+                            <Tooltip title="Valor Estimado">
+                              <Chip
+                                icon={<MoneyIcon />}
+                                label={formatCurrency(licitacao.valor_estimado)}
+                                size="small"
+                                color="primary"
+                              />
+                            </Tooltip>
+                          </Box>
                         </Box>
                       }
                       secondary={
@@ -324,6 +357,7 @@ export default function Fechamento() {
               }}>
                 {licitacoes
                   .filter(l => l.status === 'CONCLUIDA')
+                  .sort((a, b) => new Date(b.data_fechamento) - new Date(a.data_fechamento))
                   .map((licitacao) => (
                     <ListItem
                       key={licitacao.id}
@@ -338,30 +372,47 @@ export default function Fechamento() {
                       <ListItemText
                         primary={
                           <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
-                              {licitacao.numero}
-                            </Typography>
+                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                              <Typography variant="subtitle2" sx={{ fontWeight: 600 }}>
+                                {licitacao.numero}
+                              </Typography>
+                              <Tooltip title="Data de Fechamento">
+                                <Chip
+                                  icon={<CalendarIcon />}
+                                  label={formatDate(licitacao.data_fechamento)}
+                                  size="small"
+                                  variant="outlined"
+                                />
+                              </Tooltip>
+                            </Box>
                             <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
                               {licitacao.foi_ganha ? (
-                                <Chip
-                                  icon={<CheckCircleIcon />}
-                                  label="Ganha"
-                                  color="success"
-                                  size="small"
-                                />
+                                <Tooltip title="Licitação Ganha">
+                                  <Chip
+                                    icon={<CheckCircleIcon />}
+                                    label="Ganha"
+                                    color="success"
+                                    size="small"
+                                  />
+                                </Tooltip>
                               ) : (
-                                <Chip
-                                  icon={<CancelIcon />}
-                                  label="Perdida"
-                                  color="error"
-                                  size="small"
-                                />
+                                <Tooltip title="Licitação Perdida">
+                                  <Chip
+                                    icon={<CancelIcon />}
+                                    label="Perdida"
+                                    color="error"
+                                    size="small"
+                                  />
+                                </Tooltip>
                               )}
-                              <Chip
-                                label={formatCurrency(licitacao.valor_final)}
-                                size="small"
-                                color={licitacao.foi_ganha ? "success" : "error"}
-                              />
+                              <Tooltip title={`Valor Final: ${formatCurrency(licitacao.valor_final)}\nLucro Final: ${formatCurrency(licitacao.lucro_final)}`}>
+                                <Chip
+                                  icon={<MoneyIcon />}
+                                  label={formatCurrency(licitacao.valor_final)}
+                                  size="small"
+                                  color={licitacao.foi_ganha ? "success" : "error"}
+                                />
+                              </Tooltip>
                             </Box>
                           </Box>
                         }
@@ -376,6 +427,12 @@ export default function Fechamento() {
                             {!licitacao.foi_ganha && licitacao.motivo_perda && (
                               <Typography variant="body2" color="error" sx={{ mt: 1 }}>
                                 Motivo: {licitacao.motivo_perda}
+                              </Typography>
+                            )}
+                            {licitacao.observacoes && (
+                              <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+                                <InfoIcon fontSize="small" sx={{ verticalAlign: 'middle', mr: 0.5 }} />
+                                {licitacao.observacoes}
                               </Typography>
                             )}
                           </>
@@ -395,6 +452,15 @@ export default function Fechamento() {
         </DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <TextField
+              type="date"
+              label="Data de Fechamento"
+              value={dadosFechamento.data_fechamento}
+              onChange={(e) => setDadosFechamento(prev => ({ ...prev, data_fechamento: e.target.value }))}
+              fullWidth
+              InputLabelProps={{ shrink: true }}
+            />
+
             <TextField
               label="Valor Final"
               value={dadosFechamento.valor_final}
@@ -449,11 +515,15 @@ export default function Fechamento() {
               <InputLabel>Resultado</InputLabel>
               <Select
                 value={dadosFechamento.foi_ganha}
-                onChange={(e) => setDadosFechamento(prev => ({ ...prev, foi_ganha: e.target.value }))}
+                onChange={(e) => setDadosFechamento(prev => ({ 
+                  ...prev, 
+                  foi_ganha: e.target.value === 'true',
+                  motivo_perda: e.target.value === 'true' ? '' : prev.motivo_perda 
+                }))}
                 label="Resultado"
               >
-                <MenuItem value={true}>Ganha</MenuItem>
-                <MenuItem value={false}>Perdida</MenuItem>
+                <MenuItem value="true">Ganha</MenuItem>
+                <MenuItem value="false">Perdida</MenuItem>
               </Select>
             </FormControl>
 
@@ -468,23 +538,43 @@ export default function Fechamento() {
               />
             )}
 
+            <TextField
+              label="Observações"
+              multiline
+              rows={2}
+              value={dadosFechamento.observacoes}
+              onChange={(e) => setDadosFechamento(prev => ({ ...prev, observacoes: e.target.value }))}
+              fullWidth
+              helperText="Informações adicionais sobre o fechamento"
+            />
+
             {licitacaoSelecionada && (
-              <Box sx={{ mt: 2, p: 2, bgcolor: 'background.default', borderRadius: 1 }}>
-                <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                  Valores Estimados
-                </Typography>
-                <Grid container spacing={2}>
-                  <Grid item xs={6}>
-                    <Typography variant="body2">
-                      Valor: {formatCurrency(licitacaoSelecionada.valor_estimado)}
-                    </Typography>
+              <Box sx={{ mt: 2 }}>
+                <Alert severity="info" sx={{ mb: 2 }}>
+                  <Typography variant="subtitle2" gutterBottom>
+                    Valores Estimados
+                  </Typography>
+                  <Grid container spacing={2}>
+                    <Grid item xs={6}>
+                      <Typography variant="body2">
+                        Valor: {formatCurrency(licitacaoSelecionada.valor_estimado)}
+                      </Typography>
+                    </Grid>
+                    <Grid item xs={6}>
+                      <Typography variant="body2">
+                        Lucro: {formatCurrency(licitacaoSelecionada.lucro_estimado)}
+                      </Typography>
+                    </Grid>
                   </Grid>
-                  <Grid item xs={6}>
-                    <Typography variant="body2">
-                      Lucro: {formatCurrency(licitacaoSelecionada.lucro_estimado)}
+                  {dadosFechamento.valor_final && licitacaoSelecionada.valor_estimado && (
+                    <Typography variant="body2" sx={{ mt: 1 }}>
+                      Variação: {calcularVariacao(
+                        converterParaNumero(dadosFechamento.valor_final),
+                        licitacaoSelecionada.valor_estimado
+                      ).toFixed(2)}%
                     </Typography>
-                  </Grid>
-                </Grid>
+                  )}
+                </Alert>
               </Box>
             )}
           </Box>
@@ -494,7 +584,13 @@ export default function Fechamento() {
           <Button
             onClick={handleFecharLicitacao}
             variant="contained"
-            disabled={!dadosFechamento.valor_final || !dadosFechamento.lucro_final || dadosFechamento.foi_ganha === '' || (dadosFechamento.foi_ganha === false && !dadosFechamento.motivo_perda)}
+            disabled={
+              !dadosFechamento.valor_final || 
+              !dadosFechamento.lucro_final || 
+              dadosFechamento.foi_ganha === null || 
+              (dadosFechamento.foi_ganha === false && !dadosFechamento.motivo_perda) ||
+              !dadosFechamento.data_fechamento
+            }
           >
             Fechar Licitação
           </Button>

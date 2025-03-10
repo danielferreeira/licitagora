@@ -200,9 +200,12 @@ export default function Documentos() {
 
   const carregarRequisitosDocumentacao = async (licitacaoId) => {
     try {
+      console.log('Carregando requisitos para licitação:', licitacaoId);
       const data = await documentoService.listarRequisitosDocumentacao(licitacaoId);
+      console.log('Requisitos carregados:', data);
       if (data) {
         setRequisitosDocumentacao(data);
+        console.log('Estado atualizado com os requisitos');
       }
     } catch (error) {
       console.error('Erro ao carregar requisitos de documentação:', error);
@@ -321,7 +324,17 @@ export default function Documentos() {
       toast.success('Documento enviado com sucesso!');
       setOpenUploadLicitacao(false);
       limparUploadData();
-      carregarDocumentosLicitacao(licitacaoSelecionada);
+      
+      // Recarregar documentos e requisitos
+      await Promise.all([
+        carregarDocumentosLicitacao(licitacaoSelecionada),
+        carregarRequisitosDocumentacao(licitacaoSelecionada)
+      ]);
+      
+      // Mudar para a aba de requisitos após o upload do edital
+      if (uploadData.tipo_documento_id === 'EDITAL') {
+        setDocumentosTabValue(1);
+      }
     } catch (error) {
       console.error('Erro ao enviar documento:', error);
       toast.error('Erro ao enviar documento: ' + error.message);
@@ -343,12 +356,22 @@ export default function Documentos() {
     }
   };
 
-  const handleExcluirDocumentoLicitacao = async (id, arquivoUrl) => {
-    if (window.confirm('Tem certeza que deseja excluir este documento?')) {
+  const handleExcluirDocumentoLicitacao = async (id, arquivoUrl, tipoDocumento) => {
+    const isEdital = tipoDocumento?.nome?.toLowerCase().includes('edital');
+    if (window.confirm(isEdital
+      ? 'Tem certeza que deseja excluir este edital? Se este for o único edital da licitação, todos os requisitos extraídos dele também serão excluídos.'
+      : 'Tem certeza que deseja excluir este documento?')) {
       try {
-        await documentoService.excluirDocumentoLicitacao(id, arquivoUrl);
+        // Excluir o documento (e possivelmente os requisitos se for o último edital)
+        await documentoService.excluirDocumentoLicitacao(id, arquivoUrl, tipoDocumento);
+        
         toast.success('Documento excluído com sucesso!');
-        carregarDocumentosLicitacao(licitacaoSelecionada);
+        
+        // Recarregar documentos e requisitos
+        await Promise.all([
+          carregarDocumentosLicitacao(licitacaoSelecionada),
+          carregarRequisitosDocumentacao(licitacaoSelecionada)
+        ]);
       } catch (error) {
         console.error('Erro ao excluir documento:', error);
         toast.error('Erro ao excluir documento');
@@ -838,7 +861,7 @@ export default function Documentos() {
                                       <IconButton
                                         edge="end"
                                         aria-label="excluir"
-                                        onClick={() => handleExcluirDocumentoLicitacao(documento.id, documento.arquivo_url)}
+                                        onClick={() => handleExcluirDocumentoLicitacao(documento.id, documento.arquivo_url, documento.tipo_documento)}
                                         disabled={licitacoes.find(l => l.id === licitacaoSelecionada)?.status !== 'EM_ANDAMENTO'}
                                         sx={{ color: 'error.main' }}
                                       >
@@ -853,9 +876,9 @@ export default function Documentos() {
                                           <Typography variant="subtitle1" component="span">
                                           {documento.nome}
                                         </Typography>
-                                          {documento.tipo === 'EDITAL' && (
+                                          {documento.tipo_documento?.nome && (
                                         <Chip
-                                              label="EDITAL"
+                                              label={documento.tipo_documento.nome}
                                               color="primary"
                                           size="small"
                                               sx={{ ml: 1 }}

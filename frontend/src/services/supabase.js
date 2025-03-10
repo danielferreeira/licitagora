@@ -334,6 +334,11 @@ export const licitacaoService = {
                 modalidade: licitacao.modalidade?.trim(),
                 valor_estimado: formatarValorMonetario(licitacao.valor_estimado),
                 lucro_estimado: formatarValorMonetario(licitacao.lucro_estimado),
+                valor_final: formatarValorMonetario(licitacao.valor_final),
+                lucro_final: formatarValorMonetario(licitacao.lucro_final),
+                foi_ganha: licitacao.foi_ganha,
+                motivo_perda: licitacao.motivo_perda?.trim() || null,
+                data_fechamento: licitacao.data_fechamento,
                 data_abertura: licitacao.data_abertura ? 
                     (typeof licitacao.data_abertura === 'string' ? 
                         licitacao.data_abertura : 
@@ -357,17 +362,18 @@ export const licitacaoService = {
                 }
             });
 
-            const { error } = await supabase
+            const { data, error } = await supabase
                 .from('licitacoes')
                 .update(dadosFormatados)
-                .eq('id', id);
+                .eq('id', id)
+                .select();
 
             if (error) {
                 console.error('Erro ao atualizar licitação:', error);
                 throw new Error(error.message);
             }
 
-            return { id, ...dadosFormatados };
+            return data[0];
         } catch (error) {
             console.error('Erro ao atualizar licitação:', error);
             throw error.message ? error : new Error('Erro ao atualizar licitação');
@@ -414,6 +420,81 @@ export const licitacaoService = {
         return data
     }
 }
+
+// Função auxiliar para extrair texto do PDF
+const extractPDFText = async (pdfFile) => {
+  try {
+    console.log('Iniciando extração de texto do PDF...');
+    
+    // Criar um objeto FileReader
+    const reader = new FileReader();
+    
+    // Converter o arquivo em ArrayBuffer
+    const arrayBuffer = await new Promise((resolve, reject) => {
+      reader.onload = () => resolve(reader.result);
+      reader.onerror = reject;
+      reader.readAsArrayBuffer(pdfFile);
+    });
+
+    // Carregar o PDF usando pdf.js
+    const loadingTask = window.pdfjsLib.getDocument({
+      data: arrayBuffer,
+      verbosity: window.pdfjsLib.VerbosityLevel.ERRORS
+    });
+    
+    const pdf = await loadingTask.promise;
+    console.log(`PDF carregado com ${pdf.numPages} páginas`);
+    
+    let fullText = '';
+    
+    // Extrair texto de todas as páginas
+    for (let i = 1; i <= pdf.numPages; i++) {
+      console.log(`Processando página ${i}...`);
+      const page = await pdf.getPage(i);
+      
+      try {
+        const textContent = await page.getTextContent({
+          normalizeWhitespace: true,
+          disableCombineTextItems: false
+        });
+        
+        // Processar o texto mantendo a estrutura do documento
+        let lastY = null;
+        let currentLine = '';
+        
+        for (const item of textContent.items) {
+          if (lastY !== null && lastY !== item.transform[5]) {
+            // Nova linha
+            fullText += currentLine.trim() + '\n';
+            currentLine = '';
+          }
+          
+          currentLine += item.str + ' ';
+          lastY = item.transform[5];
+        }
+        
+        // Adicionar última linha da página
+        if (currentLine.trim()) {
+          fullText += currentLine.trim() + '\n';
+        }
+        
+        // Adicionar quebra de página
+        fullText += '\n';
+        
+      } catch (pageError) {
+        console.error(`Erro ao processar página ${i}:`, pageError);
+        // Continuar para a próxima página mesmo se houver erro
+      }
+    }
+
+    console.log('Extração de texto concluída');
+    return fullText;
+    
+  } catch (error) {
+    console.error('Erro ao extrair texto do PDF:', error);
+    throw new Error('Não foi possível extrair o texto do PDF: ' + error.message);
+  }
+};
 
 // Serviços de Documentos
 export const documentoService = {
@@ -544,11 +625,15 @@ export const documentoService = {
           throw new Error('Não foi possível obter URL do arquivo');
         }
 
-        // 3. Processar os requisitos usando a função SQL passando a URL
-        console.log('Processando requisitos usando URL:', urlData.publicUrl);
+        // 3. Extrair texto do PDF
+        console.log('Extraindo texto do PDF...');
+        const pdfText = await extractPDFText(arquivo);
+
+        // 4. Processar os requisitos usando a função SQL com o texto extraído
+        console.log('Processando requisitos do texto extraído');
         const { data, error: processError } = await supabase
           .rpc('processar_requisitos_edital', {
-            p_texto: urlData.publicUrl,
+            p_texto: pdfText,
             p_licitacao_id: licitacaoId
           });
 
@@ -561,7 +646,7 @@ export const documentoService = {
         return data || [];
 
       } finally {
-        // 4. Remover arquivo temporário
+        // 5. Remover arquivo temporário
         console.log('Removendo arquivo temporário');
         await supabase
           .storage
@@ -665,24 +750,73 @@ export const documentoService = {
     }
   },
 
-  excluirDocumentoLicitacao: async (id, arquivoUrl) => {
-    // 1. Excluir arquivo do storage
-    if (arquivoUrl) {
-      const { error: storageError } = await supabase
-        .storage
-        .from('documentos')
-        .remove([arquivoUrl]);
+  excluirDocumentoLicitacao: async (id, arquivoUrl, tipo) => {
+    try {
+      // Se for um edital, verificar se é o último edital da licitação
+      const { data: documento, error: docError } = await supabase
+        .from('documentos_licitacao')
+        .select(`
+          *,
+          tipo_documento:tipos_documentos(*)
+        `)
+        .eq('id', id)
+        .single();
 
-      if (storageError) throw storageError;
+      if (docError) throw docError;
+
+      const isEdital = documento.tipo_documento.nome.toLowerCase().includes('edital');
+
+      if (isEdital) {
+        // Verificar se existem outros editais para esta licitação
+        const { data: outrosEditais, error: editaisError } = await supabase
+          .from('documentos_licitacao')
+          .select(`
+            id,
+            tipo_documento:tipos_documentos(*)
+          `)
+          .eq('licitacao_id', documento.licitacao_id)
+          .neq('id', id); // Excluir o documento atual da busca
+
+        if (editaisError) throw editaisError;
+
+        // Filtrar apenas os editais
+        const outrosEditaisValidos = outrosEditais?.filter(doc => 
+          doc.tipo_documento.nome.toLowerCase().includes('edital')
+        );
+
+        // Se não houver outros editais, excluir os requisitos
+        if (!outrosEditaisValidos || outrosEditaisValidos.length === 0) {
+          console.log('Excluindo requisitos da licitação:', documento.licitacao_id);
+          const { error: reqError } = await supabase
+            .from('requisitos_documentacao')
+            .delete()
+            .eq('licitacao_id', documento.licitacao_id);
+
+          if (reqError) throw reqError;
+        }
+      }
+
+      // 1. Excluir arquivo do storage
+      if (arquivoUrl) {
+        const { error: storageError } = await supabase
+          .storage
+          .from('documentos')
+          .remove([arquivoUrl]);
+
+        if (storageError) throw storageError;
+      }
+
+      // 2. Excluir registro do documento
+      const { error } = await supabase
+        .from('documentos_licitacao')
+        .delete()
+        .eq('id', id);
+
+      if (error) throw error;
+    } catch (error) {
+      console.error('Erro ao excluir documento:', error);
+      throw error;
     }
-
-    // 2. Excluir registro do documento
-    const { error } = await supabase
-      .from('documentos_licitacao')
-      .delete()
-      .eq('id', id);
-
-    if (error) throw error;
   },
 
   // Requisitos de Documentação
@@ -695,6 +829,15 @@ export const documentoService = {
 
     if (error) throw error;
     return data;
+  },
+
+  excluirRequisitosPorLicitacao: async (licitacaoId) => {
+    const { error } = await supabase
+      .from('requisitos_documentacao')
+      .delete()
+      .eq('licitacao_id', licitacaoId);
+
+    if (error) throw error;
   },
 
   criarRequisito: async (requisito) => {
@@ -747,17 +890,7 @@ export const prazoService = {
   async listarPrazos() {
     const { data, error } = await supabase
       .from('prazos')
-      .select(`
-        *,
-        licitacao:licitacoes (
-          id,
-          numero,
-          orgao,
-          objeto,
-          status,
-          data_fim
-        )
-      `)
+      .select('*, licitacoes(*)')
       .order('data_prazo', { ascending: true });
 
     if (error) throw error;
@@ -768,17 +901,7 @@ export const prazoService = {
   async buscarPrazoPorId(id) {
     const { data, error } = await supabase
       .from('prazos')
-      .select(`
-        *,
-        licitacao:licitacoes (
-          id,
-          numero,
-          orgao,
-          objeto,
-          status,
-          data_fim
-        )
-      `)
+      .select('*, licitacoes(*)')
       .eq('id', id)
       .single();
 
@@ -826,5 +949,165 @@ export const prazoService = {
 
     if (error) throw error;
     return data;
+  }
+};
+
+// Serviços para Relatórios
+export const relatorioService = {
+  // Gerar relatório de licitações
+  async gerarRelatorioLicitacoes(filtros = {}) {
+    try {
+      console.log('Gerando relatório de licitações com filtros:', filtros);
+      const { data, error } = await supabase
+        .rpc('gerar_relatorio_licitacoes', {
+          p_data_inicio: filtros.dataInicio ? filtros.dataInicio.toISOString() : null,
+          p_data_fim: filtros.dataFim ? filtros.dataFim.toISOString() : null,
+          p_status: filtros.status || null,
+          p_cliente_id: filtros.cliente_id || null
+        });
+
+      if (error) {
+        console.error('Erro detalhado do relatório de licitações:', error);
+        throw error;
+      }
+
+      if (!data) {
+        console.log('Nenhum dado retornado do relatório de licitações');
+        return {
+          total_licitacoes: 0,
+          licitacoes_ganhas: 0,
+          licitacoes_perdidas: 0,
+          licitacoes_em_andamento: 0,
+          valor_total_ganho: 0,
+          lucro_total: 0,
+          taxa_sucesso: 0,
+          detalhes: []
+        };
+      }
+
+      // Garantir que os dados estejam no formato esperado
+      const resultado = {
+        total_licitacoes: parseInt(data.total_licitacoes) || 0,
+        licitacoes_ganhas: parseInt(data.licitacoes_ganhas) || 0,
+        licitacoes_perdidas: parseInt(data.licitacoes_perdidas) || 0,
+        licitacoes_em_andamento: parseInt(data.licitacoes_em_andamento) || 0,
+        valor_total_ganho: parseFloat(data.valor_total_ganho) || 0,
+        lucro_total: parseFloat(data.lucro_total) || 0,
+        taxa_sucesso: parseFloat(data.taxa_sucesso) || 0,
+        detalhes: Array.isArray(data.detalhes) ? data.detalhes.map(item => ({
+          ...item,
+          valor_estimado: parseFloat(item.valor_estimado) || 0,
+          valor_final: parseFloat(item.valor_final) || 0,
+          lucro_final: parseFloat(item.lucro_final) || 0
+        })) : []
+      };
+
+      console.log('Dados formatados do relatório de licitações:', resultado);
+      return resultado;
+    } catch (error) {
+      console.error('Erro ao gerar relatório de licitações:', error);
+      throw error;
+    }
+  },
+
+  // Gerar relatório de clientes
+  async gerarRelatorioClientes(filtros = {}) {
+    try {
+      console.log('Gerando relatório de clientes com filtros:', filtros);
+      const { data, error } = await supabase
+        .rpc('gerar_relatorio_clientes', {
+          p_data_inicio: filtros.dataInicio ? filtros.dataInicio.toISOString() : null,
+          p_data_fim: filtros.dataFim ? filtros.dataFim.toISOString() : null
+        });
+
+      if (error) {
+        console.error('Erro detalhado do relatório de clientes:', error);
+        throw error;
+      }
+
+      if (!data) {
+        console.log('Nenhum dado retornado do relatório de clientes');
+        return {
+          total_clientes: 0,
+          clientes_ativos: 0,
+          valor_total_licitacoes: 0,
+          detalhes: []
+        };
+      }
+
+      // Garantir que os dados estejam no formato esperado
+      const resultado = {
+        total_clientes: parseInt(data.total_clientes) || 0,
+        clientes_ativos: parseInt(data.clientes_ativos) || 0,
+        valor_total_licitacoes: parseFloat(data.valor_total_licitacoes) || 0,
+        detalhes: Array.isArray(data.detalhes) ? data.detalhes.map(item => ({
+          ...item,
+          total_licitacoes: parseInt(item.total_licitacoes) || 0,
+          licitacoes_ganhas: parseInt(item.licitacoes_ganhas) || 0,
+          licitacoes_em_andamento: parseInt(item.licitacoes_em_andamento) || 0,
+          valor_total_ganho: parseFloat(item.valor_total_ganho) || 0,
+          lucro_total: parseFloat(item.lucro_total) || 0
+        })) : []
+      };
+
+      console.log('Dados formatados do relatório de clientes:', resultado);
+      return resultado;
+    } catch (error) {
+      console.error('Erro ao gerar relatório de clientes:', error);
+      throw error;
+    }
+  },
+
+  // Gerar relatório de desempenho
+  async gerarRelatorioDesempenho(filtros = {}) {
+    try {
+      console.log('Gerando relatório de desempenho com filtros:', filtros);
+      const { data, error } = await supabase
+        .rpc('gerar_relatorio_desempenho', {
+          p_data_inicio: filtros.dataInicio ? filtros.dataInicio.toISOString() : null,
+          p_data_fim: filtros.dataFim ? filtros.dataFim.toISOString() : null
+        });
+
+      if (error) {
+        console.error('Erro detalhado do relatório de desempenho:', error);
+        throw error;
+      }
+
+      if (!data) {
+        console.log('Nenhum dado retornado do relatório de desempenho');
+        return {
+          total_licitacoes: 0,
+          taxa_sucesso: 0,
+          valor_total_ganho: 0,
+          lucro_total: 0,
+          media_prazo_fechamento: 0,
+          motivos_perda: {},
+          evolucao_mensal: []
+        };
+      }
+
+      // Garantir que os dados estejam no formato esperado
+      const resultado = {
+        total_licitacoes: parseInt(data.total_licitacoes) || 0,
+        taxa_sucesso: parseFloat(data.taxa_sucesso) || 0,
+        valor_total_ganho: parseFloat(data.valor_total_ganho) || 0,
+        lucro_total: parseFloat(data.lucro_total) || 0,
+        media_prazo_fechamento: parseFloat(data.media_prazo_fechamento) || 0,
+        motivos_perda: data.motivos_perda || {},
+        evolucao_mensal: Array.isArray(data.evolucao_mensal) ? data.evolucao_mensal.map(item => ({
+          ...item,
+          total_licitacoes: parseInt(item.total_licitacoes) || 0,
+          licitacoes_ganhas: parseInt(item.licitacoes_ganhas) || 0,
+          valor_total: parseFloat(item.valor_total) || 0,
+          lucro_total: parseFloat(item.lucro_total) || 0
+        })) : []
+      };
+
+      console.log('Dados formatados do relatório de desempenho:', resultado);
+      return resultado;
+    } catch (error) {
+      console.error('Erro ao gerar relatório de desempenho:', error);
+      throw error;
+    }
   }
 }; 

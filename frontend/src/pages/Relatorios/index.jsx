@@ -33,7 +33,7 @@ import {
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { clienteService, licitacaoService } from '../../services/supabase';
+import { clienteService, relatorioService } from '../../services/supabase';
 
 export default function Relatorios() {
   const [clientes, setClientes] = useState([]);
@@ -85,80 +85,34 @@ export default function Relatorios() {
       ]);
     } catch (error) {
       console.error('Erro ao gerar relatórios:', error);
+      toast.error('Erro ao gerar relatórios');
     }
-  };
-
-  const validarDados = (dados) => {
-    if (!dados) return false;
-    if (Array.isArray(dados)) return dados.length > 0;
-    if (typeof dados === 'object') return Object.keys(dados).length > 0;
-    return true;
-  };
-
-  const renderizarConteudo = (dados, componente, mensagemVazia = 'Nenhum dado disponível') => {
-    if (!validarDados(dados)) {
-      return (
-        <Typography color="text.secondary">
-          {mensagemVazia}
-        </Typography>
-      );
-    }
-    return componente;
-  };
-
-  const gerarChaveUnica = (prefixo, id, sufixo = '') => {
-    const timestamp = new Date().getTime();
-    return `${prefixo}-${id}-${timestamp}${sufixo ? `-${sufixo}` : ''}`;
   };
 
   const gerarRelatorioLicitacoes = async () => {
     setLoading(prev => ({ ...prev, licitacoes: true }));
     try {
-      let query = licitacaoService.listarLicitacoes();
-
-      // Aplicar filtros
-      if (filtros.dataInicio) {
-        query = query.gte('data_abertura', filtros.dataInicio.toISOString());
+      console.log('Gerando relatório de licitações com filtros:', filtros);
+      const data = await relatorioService.gerarRelatorioLicitacoes(filtros);
+      console.log('Dados recebidos do relatório de licitações:', data);
+      
+      if (data) {
+        const relatorio = {
+          ...data,
+          detalhes: Array.isArray(data.detalhes) ? data.detalhes.map(item => ({
+            ...item,
+            data_abertura: item.data_abertura ? new Date(item.data_abertura) : null,
+            data_fechamento: item.data_fechamento ? new Date(item.data_fechamento) : null
+          })) : []
+        };
+        console.log('Relatório de licitações formatado:', relatorio);
+        setRelatorioLicitacoes(relatorio);
+      } else {
+        console.log('Nenhum dado retornado para o relatório de licitações');
+        setRelatorioLicitacoes(null);
       }
-      if (filtros.dataFim) {
-        query = query.lte('data_fim', filtros.dataFim.toISOString());
-      }
-      if (filtros.status) {
-        query = query.eq('status', filtros.status);
-      }
-      if (filtros.cliente_id) {
-        query = query.eq('cliente_id', filtros.cliente_id);
-      }
-
-      const licitacoes = await query;
-
-      // Calcular estatísticas
-      const totalLicitacoes = licitacoes.length;
-      const licitacoesGanhas = licitacoes.filter(l => l.status === 'FINALIZADA' && l.foi_ganha).length;
-      const valorTotalGanho = licitacoes
-        .filter(l => l.status === 'FINALIZADA' && l.foi_ganha)
-        .reduce((total, l) => total + (Number(l.valor_final) || 0), 0);
-      const lucroTotal = licitacoes
-        .filter(l => l.status === 'FINALIZADA' && l.foi_ganha)
-        .reduce((total, l) => total + (Number(l.lucro_final) || 0), 0);
-
-      setRelatorioLicitacoes({
-        totalLicitacoes,
-        licitacoesGanhas,
-        valorTotalGanho,
-        lucroTotal,
-        detalhes: licitacoes.map(licitacao => ({
-          ...licitacao,
-          valor_estimado: Number(licitacao.valor_estimado) || 0,
-          valor_final: Number(licitacao.valor_final) || 0,
-          lucro_estimado: Number(licitacao.lucro_estimado) || 0,
-          lucro_final: Number(licitacao.lucro_final) || 0,
-          foi_ganha: Boolean(licitacao.foi_ganha),
-          cliente: licitacao.cliente || null
-        }))
-      });
     } catch (error) {
-      console.error('Erro ao gerar relatório de licitações:', error);
+      console.error('Erro detalhado ao gerar relatório de licitações:', error);
       toast.error('Erro ao gerar relatório de licitações');
       setRelatorioLicitacoes(null);
     } finally {
@@ -169,36 +123,23 @@ export default function Relatorios() {
   const gerarRelatorioClientes = async () => {
     setLoading(prev => ({ ...prev, clientes: true }));
     try {
-      // Buscar clientes e licitações
-      const [clientesData, licitacoesData] = await Promise.all([
-        clienteService.listarClientes(),
-        licitacaoService.listarLicitacoes()
-      ]);
-
-      // Processar dados por cliente
-      const detalhesClientes = clientesData.map(cliente => {
-        const licitacoesCliente = licitacoesData.filter(l => l.cliente_id === cliente.id);
-        const licitacoesGanhas = licitacoesCliente.filter(l => l.status === 'FINALIZADA' && l.foi_ganha);
-        const licitacoesEmAndamento = licitacoesCliente.filter(l => l.status === 'EM_ANDAMENTO');
-        const valorTotalGanho = licitacoesGanhas.reduce((total, l) => total + (Number(l.valor_final) || 0), 0);
-        const lucroTotal = licitacoesGanhas.reduce((total, l) => total + (Number(l.lucro_final) || 0), 0);
-
-        return {
-          ...cliente,
-          totalLicitacoes: licitacoesCliente.length,
-          licitacoesGanhas: licitacoesGanhas.length,
-          licitacoesEmAndamento: licitacoesEmAndamento.length,
-          valorTotalGanho,
-          lucroTotal
+      console.log('Gerando relatório de clientes com filtros:', filtros);
+      const data = await relatorioService.gerarRelatorioClientes(filtros);
+      console.log('Dados recebidos do relatório de clientes:', data);
+      
+      if (data) {
+        const relatorio = {
+          ...data,
+          detalhes: Array.isArray(data.detalhes) ? data.detalhes : []
         };
-      });
-
-      setRelatorioClientes({
-        totalClientes: clientesData.length,
-        detalhes: detalhesClientes
-      });
+        console.log('Relatório de clientes formatado:', relatorio);
+        setRelatorioClientes(relatorio);
+      } else {
+        console.log('Nenhum dado retornado para o relatório de clientes');
+        setRelatorioClientes(null);
+      }
     } catch (error) {
-      console.error('Erro ao gerar relatório de clientes:', error);
+      console.error('Erro detalhado ao gerar relatório de clientes:', error);
       toast.error('Erro ao gerar relatório de clientes');
       setRelatorioClientes(null);
     } finally {
@@ -209,49 +150,24 @@ export default function Relatorios() {
   const gerarRelatorioDesempenho = async () => {
     setLoading(prev => ({ ...prev, desempenho: true }));
     try {
-      const licitacoes = await licitacaoService.listarLicitacoes();
-      const licitacoesFinalizadas = licitacoes.filter(l => l.status === 'FINALIZADA');
-      const licitacoesGanhas = licitacoesFinalizadas.filter(l => l.foi_ganha);
-
-      // Calcular estatísticas
-      const taxaSucesso = licitacoesFinalizadas.length > 0
-        ? (licitacoesGanhas.length / licitacoesFinalizadas.length) * 100
-        : 0;
-
-      const valorTotalGanho = licitacoesGanhas.reduce((total, l) => total + (Number(l.valor_final) || 0), 0);
-      const lucroTotal = licitacoesGanhas.reduce((total, l) => total + (Number(l.lucro_final) || 0), 0);
-
-      // Calcular média de prazo de fechamento
-      const prazos = licitacoesFinalizadas
-        .filter(l => l.data_fechamento && l.data_abertura)
-        .map(l => {
-          const inicio = new Date(l.data_abertura);
-          const fim = new Date(l.data_fechamento);
-          return Math.ceil((fim - inicio) / (1000 * 60 * 60 * 24)); // Dias
-        });
-
-      const mediaPrazoFechamento = prazos.length > 0
-        ? prazos.reduce((a, b) => a + b, 0) / prazos.length
-        : 0;
-
-      // Calcular principais motivos de perda
-      const motivosPerda = licitacoesFinalizadas
-        .filter(l => !l.foi_ganha && l.motivo_perda)
-        .reduce((acc, l) => {
-          acc[l.motivo_perda] = (acc[l.motivo_perda] || 0) + 1;
-          return acc;
-        }, {});
-
-      setRelatorioDesempenho({
-        periodo: filtros.periodo,
-        taxaSucesso,
-        valorTotalGanho,
-        lucroTotal,
-        mediaPrazoFechamento,
-        principaisMotivosPerda: motivosPerda
-      });
+      console.log('Gerando relatório de desempenho com filtros:', filtros);
+      const data = await relatorioService.gerarRelatorioDesempenho(filtros);
+      console.log('Dados recebidos do relatório de desempenho:', data);
+      
+      if (data) {
+        const relatorio = {
+          ...data,
+          evolucao_mensal: Array.isArray(data.evolucao_mensal) ? data.evolucao_mensal : [],
+          motivos_perda: data.motivos_perda || {}
+        };
+        console.log('Relatório de desempenho formatado:', relatorio);
+        setRelatorioDesempenho(relatorio);
+      } else {
+        console.log('Nenhum dado retornado para o relatório de desempenho');
+        setRelatorioDesempenho(null);
+      }
     } catch (error) {
-      console.error('Erro ao gerar relatório de desempenho:', error);
+      console.error('Erro detalhado ao gerar relatório de desempenho:', error);
       toast.error('Erro ao gerar relatório de desempenho');
       setRelatorioDesempenho(null);
     } finally {
@@ -260,6 +176,7 @@ export default function Relatorios() {
   };
 
   const handleFiltroChange = (campo, valor) => {
+    console.log('Alterando filtro:', campo, valor);
     setFiltros(prev => ({
       ...prev,
       [campo]: valor
@@ -267,6 +184,7 @@ export default function Relatorios() {
   };
 
   const aplicarFiltros = () => {
+    console.log('Aplicando filtros:', filtros);
     gerarRelatorios();
   };
 
@@ -295,6 +213,7 @@ export default function Relatorios() {
         <Button
           variant="contained"
           startIcon={<AssessmentIcon />}
+          onClick={aplicarFiltros}
           sx={{
             borderRadius: 2,
             textTransform: 'none',
@@ -341,9 +260,12 @@ export default function Relatorios() {
                 onChange={(e) => handleFiltroChange('status', e.target.value)}
               >
                 <MenuItem value="">Todos</MenuItem>
-                <MenuItem value="Em Análise">Em Análise</MenuItem>
-                <MenuItem value="Em Andamento">Em Andamento</MenuItem>
-                <MenuItem value="Finalizada">Finalizada</MenuItem>
+                <MenuItem value="EM_ANDAMENTO">Em Andamento</MenuItem>
+                <MenuItem value="CONCLUIDA">Concluída</MenuItem>
+                <MenuItem value="CANCELADA">Cancelada</MenuItem>
+                <MenuItem value="SUSPENSA">Suspensa</MenuItem>
+                <MenuItem value="FRACASSADA">Fracassada</MenuItem>
+                <MenuItem value="DESERTA">Deserta</MenuItem>
               </Select>
             </FormControl>
           </Grid>
@@ -357,10 +279,7 @@ export default function Relatorios() {
               >
                 <MenuItem value="">Todos</MenuItem>
                 {clientes.map((cliente) => (
-                  <MenuItem 
-                    key={gerarChaveUnica('select', cliente.id, 'cliente')} 
-                    value={cliente.id}
-                  >
+                  <MenuItem key={cliente.id} value={cliente.id}>
                     {cliente.razao_social}
                   </MenuItem>
                 ))}
@@ -422,10 +341,10 @@ export default function Relatorios() {
                             Total de Licitações
                           </Typography>
                           <Typography variant="h5">
-                            {relatorioLicitacoes.totalLicitacoes}
+                            {relatorioLicitacoes?.total_licitacoes || 0}
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
-                            {relatorioLicitacoes.licitacoesEmAnalise} em análise • {relatorioLicitacoes.licitacoesEmAndamento} em andamento
+                            {relatorioLicitacoes?.licitacoes_em_andamento || 0} em andamento
                           </Typography>
                         </CardContent>
                       </Card>
@@ -437,16 +356,16 @@ export default function Relatorios() {
                             Licitações Finalizadas
                           </Typography>
                           <Typography variant="h5" sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                            {relatorioLicitacoes.licitacoesFinalizadas}
+                            {(relatorioLicitacoes?.licitacoes_ganhas || 0) + (relatorioLicitacoes?.licitacoes_perdidas || 0)}
                             <Chip
-                              label={`${relatorioLicitacoes.licitacoesGanhas} ganhas`}
+                              label={`${relatorioLicitacoes?.licitacoes_ganhas || 0} ganhas`}
                               color="success"
                               size="small"
                               variant="outlined"
                             />
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
-                            Taxa de sucesso: {((relatorioLicitacoes.licitacoesGanhas / relatorioLicitacoes.licitacoesFinalizadas) * 100 || 0).toFixed(1)}%
+                            Taxa de sucesso: {(relatorioLicitacoes?.taxa_sucesso || 0).toFixed(1)}%
                           </Typography>
                         </CardContent>
                       </Card>
@@ -458,10 +377,10 @@ export default function Relatorios() {
                             Valor Total Ganho
                           </Typography>
                           <Typography variant="h5" color="primary.main">
-                            {formatarMoeda(relatorioLicitacoes.valorTotalGanho)}
+                            {formatarMoeda(relatorioLicitacoes?.valor_total_ganho || 0)}
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
-                            Média por licitação: {formatarMoeda(relatorioLicitacoes.valorTotalGanho / relatorioLicitacoes.licitacoesGanhas || 0)}
+                            Média por licitação: {formatarMoeda((relatorioLicitacoes?.valor_total_ganho || 0) / (relatorioLicitacoes?.licitacoes_ganhas || 1))}
                           </Typography>
                         </CardContent>
                       </Card>
@@ -473,12 +392,12 @@ export default function Relatorios() {
                             Lucro Total
                           </Typography>
                           <Typography variant="h5" color={
-                            relatorioLicitacoes.lucroTotal > 0 ? 'success.main' : 'error.main'
+                            relatorioLicitacoes?.lucro_total > 0 ? 'success.main' : 'error.main'
                           }>
-                            {formatarMoeda(relatorioLicitacoes.lucroTotal)}
+                            {formatarMoeda(relatorioLicitacoes?.lucro_total || 0)}
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
-                            Margem: {((relatorioLicitacoes.lucroTotal / relatorioLicitacoes.valorTotalGanho) * 100 || 0).toFixed(1)}%
+                            Margem: {((relatorioLicitacoes?.lucro_total || 0) / (relatorioLicitacoes?.valor_total_ganho || 1) * 100).toFixed(1)}%
                           </Typography>
                         </CardContent>
                       </Card>
@@ -501,52 +420,52 @@ export default function Relatorios() {
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {relatorioLicitacoes.detalhes.map((licitacao) => (
-                          <TableRow key={gerarChaveUnica('licitacao', licitacao.id, licitacao.numero)}>
-                            <TableCell>{licitacao.numero}</TableCell>
-                            <TableCell>{licitacao.cliente ? licitacao.cliente.razao_social : 'N/A'}</TableCell>
-                            <TableCell>{licitacao.orgao}</TableCell>
+                        {relatorioLicitacoes?.detalhes?.map((licitacao) => (
+                          <TableRow key={licitacao.id}>
+                            <TableCell>{licitacao?.numero}</TableCell>
+                            <TableCell>{licitacao?.cliente_razao_social}</TableCell>
+                            <TableCell>{licitacao?.orgao}</TableCell>
                             <TableCell>
                               <Chip 
-                                label={licitacao.status}
+                                label={licitacao?.status}
                                 color={
-                                  licitacao.status === 'Finalizada' 
-                                    ? (licitacao.foi_ganha ? 'success' : 'error')
+                                  licitacao?.status === 'CONCLUIDA' 
+                                    ? (licitacao?.foi_ganha ? 'success' : 'error')
                                     : 'primary'
                                 }
-                                variant={licitacao.status === 'Finalizada' ? 'filled' : 'outlined'}
+                                variant={licitacao?.status === 'CONCLUIDA' ? 'filled' : 'outlined'}
                                 size="small"
                               />
                             </TableCell>
-                            <TableCell>{format(new Date(licitacao.data_abertura), 'dd/MM/yyyy HH:mm')}</TableCell>
-                            <TableCell align="right">{formatarMoeda(licitacao.valor_estimado)}</TableCell>
+                            <TableCell>{format(new Date(licitacao?.data_abertura), 'dd/MM/yyyy HH:mm')}</TableCell>
+                            <TableCell align="right">{formatarMoeda(licitacao?.valor_estimado)}</TableCell>
                             <TableCell align="right">
-                              {licitacao.status === 'Finalizada' 
-                                ? formatarMoeda(licitacao.valor_final)
+                              {licitacao?.status === 'CONCLUIDA' 
+                                ? formatarMoeda(licitacao?.valor_final)
                                 : '-'}
                             </TableCell>
                             <TableCell align="right">
-                              {licitacao.status === 'Finalizada' ? (
+                              {licitacao?.status === 'CONCLUIDA' ? (
                                 <Typography 
-                                  color={licitacao.lucro_final > 0 ? 'success.main' : 'error.main'}
+                                  color={licitacao?.lucro_final > 0 ? 'success.main' : 'error.main'}
                                 >
-                                  {formatarMoeda(licitacao.lucro_final)}
+                                  {formatarMoeda(licitacao?.lucro_final)}
                                 </Typography>
                               ) : '-'}
                             </TableCell>
                             <TableCell>
                               <Chip 
                                 label={
-                                  licitacao.status === 'Finalizada'
-                                    ? (licitacao.foi_ganha ? 'Ganha' : 'Perdida')
+                                  licitacao?.status === 'CONCLUIDA'
+                                    ? (licitacao?.foi_ganha ? 'Ganha' : 'Perdida')
                                     : 'Aguardando'
                                 }
                                 color={
-                                  licitacao.status === 'Finalizada'
-                                    ? (licitacao.foi_ganha ? 'success' : 'error')
+                                  licitacao?.status === 'CONCLUIDA'
+                                    ? (licitacao?.foi_ganha ? 'success' : 'error')
                                     : 'warning'
                                 }
-                                variant={licitacao.status === 'Finalizada' ? 'filled' : 'outlined'}
+                                variant={licitacao?.status === 'CONCLUIDA' ? 'filled' : 'outlined'}
                                 size="small"
                               />
                             </TableCell>
@@ -587,7 +506,7 @@ export default function Relatorios() {
                             Total de Clientes
                           </Typography>
                           <Typography variant="h5">
-                            {relatorioClientes.totalClientes}
+                            {relatorioClientes?.total_clientes || 0}
                           </Typography>
                         </CardContent>
                       </Card>
@@ -599,7 +518,19 @@ export default function Relatorios() {
                             Clientes Ativos
                           </Typography>
                           <Typography variant="h5" color="success.main">
-                            {relatorioClientes.clientesAtivos}
+                            {relatorioClientes?.clientes_ativos || 0}
+                          </Typography>
+                        </CardContent>
+                      </Card>
+                    </Grid>
+                    <Grid item xs={12} sm={6} md={4}>
+                      <Card variant="outlined">
+                        <CardContent>
+                          <Typography variant="subtitle2" color="text.secondary">
+                            Valor Total em Licitações
+                          </Typography>
+                          <Typography variant="h5" color="primary.main">
+                            {formatarMoeda(relatorioClientes?.valor_total_licitacoes || 0)}
                           </Typography>
                         </CardContent>
                       </Card>
@@ -620,19 +551,19 @@ export default function Relatorios() {
                         </TableRow>
                       </TableHead>
                       <TableBody>
-                        {relatorioClientes.detalhes.map((cliente) => (
-                          <TableRow key={gerarChaveUnica('cliente', cliente.id, cliente.cnpj?.replace(/\D/g, ''))}>
-                            <TableCell>{cliente.razao_social}</TableCell>
-                            <TableCell>{cliente.cnpj}</TableCell>
-                            <TableCell align="right">{cliente.totalLicitacoes}</TableCell>
-                            <TableCell align="right">{cliente.licitacoesGanhas}</TableCell>
-                            <TableCell align="right">{cliente.licitacoesEmAndamento}</TableCell>
-                            <TableCell align="right">{formatarMoeda(cliente.valorTotalGanho)}</TableCell>
+                        {relatorioClientes?.detalhes?.map((cliente) => (
+                          <TableRow key={cliente.id}>
+                            <TableCell>{cliente?.razao_social}</TableCell>
+                            <TableCell>{cliente?.cnpj}</TableCell>
+                            <TableCell align="right">{cliente?.total_licitacoes}</TableCell>
+                            <TableCell align="right">{cliente?.licitacoes_ganhas}</TableCell>
+                            <TableCell align="right">{cliente?.licitacoes_em_andamento}</TableCell>
+                            <TableCell align="right">{formatarMoeda(cliente?.valor_total_ganho)}</TableCell>
                             <TableCell align="right">
                               <Typography 
-                                color={cliente.lucroTotal > 0 ? 'success.main' : 'error.main'}
+                                color={cliente?.lucro_total > 0 ? 'success.main' : 'error.main'}
                               >
-                                {formatarMoeda(cliente.lucroTotal)}
+                                {formatarMoeda(cliente?.lucro_total)}
                               </Typography>
                             </TableCell>
                           </TableRow>
@@ -664,9 +595,6 @@ export default function Relatorios() {
                 </Box>
               ) : relatorioDesempenho ? (
                 <>
-                  <Typography variant="subtitle2" color="text.secondary" gutterBottom>
-                    Período: {relatorioDesempenho.periodo.inicio} a {relatorioDesempenho.periodo.fim}
-                  </Typography>
                   <Grid container spacing={2} sx={{ mt: 1 }}>
                     <Grid item xs={12} sm={6} md={3}>
                       <Card variant="outlined">
@@ -675,7 +603,7 @@ export default function Relatorios() {
                             Total de Licitações
                           </Typography>
                           <Typography variant="h5">
-                            {relatorioDesempenho.totalLicitacoes}
+                            {relatorioDesempenho?.total_licitacoes || 0}
                           </Typography>
                         </CardContent>
                       </Card>
@@ -687,9 +615,9 @@ export default function Relatorios() {
                             Taxa de Sucesso
                           </Typography>
                           <Typography variant="h5" color={
-                            Number(relatorioDesempenho.taxaSucesso) >= 50 ? 'success.main' : 'error.main'
+                            Number(relatorioDesempenho?.taxa_sucesso || 0) >= 50 ? 'success.main' : 'error.main'
                           }>
-                            {relatorioDesempenho.taxaSucesso}%
+                            {(relatorioDesempenho?.taxa_sucesso || 0).toFixed(1)}%
                           </Typography>
                         </CardContent>
                       </Card>
@@ -701,7 +629,7 @@ export default function Relatorios() {
                             Valor Total Ganho
                           </Typography>
                           <Typography variant="h5" color="primary.main">
-                            {formatarMoeda(relatorioDesempenho.valorTotalGanho)}
+                            {formatarMoeda(relatorioDesempenho?.valor_total_ganho || 0)}
                           </Typography>
                         </CardContent>
                       </Card>
@@ -713,32 +641,67 @@ export default function Relatorios() {
                             Lucro Total
                           </Typography>
                           <Typography variant="h5" color={
-                            relatorioDesempenho.lucroTotal > 0 ? 'success.main' : 'error.main'
+                            relatorioDesempenho?.lucro_total > 0 ? 'success.main' : 'error.main'
                           }>
-                            {formatarMoeda(relatorioDesempenho.lucroTotal)}
+                            {formatarMoeda(relatorioDesempenho?.lucro_total || 0)}
                           </Typography>
                         </CardContent>
                       </Card>
                     </Grid>
                   </Grid>
-                  {Object.entries(relatorioDesempenho.principaisMotivosPerda).length > 0 && (
-                    <Box sx={{ mt: 3 }}>
-                      <Typography variant="subtitle1" gutterBottom>
-                        Principais Motivos de Perda
-                      </Typography>
-                      <Grid container spacing={1}>
-                        {Object.entries(relatorioDesempenho.principaisMotivosPerda).map(([motivo, quantidade], index) => (
-                          <Grid item key={gerarChaveUnica('motivo', index, motivo.replace(/\W/g, ''))}>
-                            <Chip
-                              label={`${motivo}: ${quantidade}`}
-                              color="default"
-                              variant="outlined"
-                            />
-                          </Grid>
-                        ))}
-                      </Grid>
-                    </Box>
-                  )}
+
+                  <Box sx={{ mt: 3 }}>
+                    <Typography variant="subtitle1" gutterBottom>
+                      Principais Motivos de Perda
+                    </Typography>
+                    <Grid container spacing={1}>
+                      {Object.entries(relatorioDesempenho?.motivos_perda || {}).map(([motivo, quantidade], index) => (
+                        <Grid item key={`motivo-${index}`}>
+                          <Chip
+                            label={`${motivo}: ${quantidade}`}
+                            color="default"
+                            variant="outlined"
+                          />
+                        </Grid>
+                      ))}
+                    </Grid>
+                  </Box>
+
+                  <Box sx={{ mt: 3 }}>
+                    <Typography variant="subtitle1" gutterBottom>
+                      Evolução Mensal
+                    </Typography>
+                    <TableContainer>
+                      <Table>
+                        <TableHead>
+                          <TableRow>
+                            <TableCell>Mês</TableCell>
+                            <TableCell align="right">Total Licitações</TableCell>
+                            <TableCell align="right">Licitações Ganhas</TableCell>
+                            <TableCell align="right">Valor Total</TableCell>
+                            <TableCell align="right">Lucro Total</TableCell>
+                          </TableRow>
+                        </TableHead>
+                        <TableBody>
+                          {relatorioDesempenho?.evolucao_mensal?.map((mes) => (
+                            <TableRow key={mes.mes}>
+                              <TableCell>{mes?.mes}</TableCell>
+                              <TableCell align="right">{mes?.total_licitacoes}</TableCell>
+                              <TableCell align="right">{mes?.licitacoes_ganhas}</TableCell>
+                              <TableCell align="right">{formatarMoeda(mes?.valor_total)}</TableCell>
+                              <TableCell align="right">
+                                <Typography 
+                                  color={mes?.lucro_total > 0 ? 'success.main' : 'error.main'}
+                                >
+                                  {formatarMoeda(mes?.lucro_total)}
+                                </Typography>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </TableContainer>
+                  </Box>
                 </>
               ) : (
                 <Typography color="text.secondary">
