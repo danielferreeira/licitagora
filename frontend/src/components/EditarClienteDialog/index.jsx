@@ -15,10 +15,14 @@ import {
   Box,
   OutlinedInput,
   IconButton,
+  CircularProgress,
+  Typography,
+  Alert,
 } from '@mui/material';
-import { ArrowBack as ArrowBackIcon } from '@mui/icons-material';
+import { ArrowBack as ArrowBackIcon, LocationOn as LocationOnIcon } from '@mui/icons-material';
 import { toast } from 'react-toastify';
 import { clienteService } from '../../services/supabase';
+import axios from 'axios';
 
 const estados = [
   'AC', 'AL', 'AP', 'AM', 'BA', 'CE', 'DF', 'ES', 'GO', 'MA', 'MT', 'MS', 'MG',
@@ -50,6 +54,7 @@ export default function EditarClienteDialog({ open, cliente, onClose, onSuccess 
     estado: '',
     ramos_atividade: []
   });
+  const [errors, setErrors] = useState({});
 
   useEffect(() => {
     if (cliente) {
@@ -57,16 +62,109 @@ export default function EditarClienteDialog({ open, cliente, onClose, onSuccess 
     }
   }, [cliente]);
 
+  const validateForm = () => {
+    const newErrors = {};
+    
+    if (!formData.razao_social.trim()) {
+      newErrors.razao_social = 'Razão Social é obrigatória';
+    } else if (formData.razao_social.length > 100) {
+      newErrors.razao_social = 'Razão Social deve ter no máximo 100 caracteres';
+    }
+
+    if (!formData.email.trim()) {
+      newErrors.email = 'E-mail é obrigatório';
+    } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(formData.email)) {
+      newErrors.email = 'E-mail inválido';
+    }
+
+    if (formData.telefone && formData.telefone.replace(/\D/g, '').length < 10) {
+      newErrors.telefone = 'Telefone inválido';
+    }
+
+    if (!formData.cep.trim()) {
+      newErrors.cep = 'CEP é obrigatório';
+    } else if (formData.cep.replace(/\D/g, '').length !== 8) {
+      newErrors.cep = 'CEP inválido';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
   const handleChange = (event) => {
     const { name, value } = event.target;
+    let formattedValue = value;
+
+    // Formatação específica para cada campo
+    switch (name) {
+      case 'telefone':
+        formattedValue = value.replace(/\D/g, '')
+          .replace(/^(\d{2})(\d)/, '($1) $2')
+          .replace(/(\d)(\d{4})$/, '$1-$2')
+          .substring(0, 15);
+        break;
+      case 'cep':
+        formattedValue = value.replace(/\D/g, '')
+          .replace(/^(\d{5})(\d)/, '$1-$2')
+          .substring(0, 9);
+        break;
+      default:
+        break;
+    }
+
     setFormData(prev => ({
       ...prev,
-      [name]: value
+      [name]: formattedValue
     }));
+
+    // Limpa o erro do campo quando ele é alterado
+    if (errors[name]) {
+      setErrors(prev => ({
+        ...prev,
+        [name]: undefined
+      }));
+    }
+
+    // Busca CEP quando completo
+    if (name === 'cep' && formattedValue.replace(/\D/g, '').length === 8) {
+      buscarCep(formattedValue);
+    }
+  };
+
+  const buscarCep = async (cep) => {
+    if (!cep || cep.replace(/\D/g, '').length !== 8) return;
+
+    setLoading(true);
+    try {
+      const response = await axios.get(`https://viacep.com.br/ws/${cep.replace(/\D/g, '')}/json/`);
+      if (response.data.erro) {
+        toast.error('CEP não encontrado');
+        return;
+      }
+
+      setFormData(prev => ({
+        ...prev,
+        endereco: response.data.logradouro || '',
+        bairro: response.data.bairro || '',
+        cidade: response.data.localidade || '',
+        estado: response.data.uf || ''
+      }));
+    } catch (error) {
+      console.error('Erro ao buscar CEP:', error);
+      toast.error('Erro ao buscar CEP');
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSubmit = async (event) => {
     event.preventDefault();
+    
+    if (!validateForm()) {
+      toast.error('Por favor, corrija os erros no formulário');
+      return;
+    }
+    
     setLoading(true);
 
     try {
@@ -75,7 +173,7 @@ export default function EditarClienteDialog({ open, cliente, onClose, onSuccess 
       onSuccess();
     } catch (error) {
       console.error('Erro ao atualizar cliente:', error);
-      toast.error('Erro ao atualizar cliente');
+      toast.error(error.message || 'Erro ao atualizar cliente');
     } finally {
       setLoading(false);
     }
@@ -113,6 +211,8 @@ export default function EditarClienteDialog({ open, cliente, onClose, onSuccess 
                 name="razao_social"
                 value={formData.razao_social}
                 onChange={handleChange}
+                error={!!errors.razao_social}
+                helperText={errors.razao_social}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -135,6 +235,8 @@ export default function EditarClienteDialog({ open, cliente, onClose, onSuccess 
                 type="email"
                 value={formData.email}
                 onChange={handleChange}
+                error={!!errors.email}
+                helperText={errors.email}
               />
             </Grid>
             <Grid item xs={12} sm={6}>
@@ -144,6 +246,8 @@ export default function EditarClienteDialog({ open, cliente, onClose, onSuccess 
                 name="telefone"
                 value={formData.telefone}
                 onChange={handleChange}
+                error={!!errors.telefone}
+                helperText={errors.telefone}
               />
             </Grid>
             <Grid item xs={12} sm={4}>
@@ -153,6 +257,19 @@ export default function EditarClienteDialog({ open, cliente, onClose, onSuccess 
                 name="cep"
                 value={formData.cep}
                 onChange={handleChange}
+                error={!!errors.cep}
+                helperText={errors.cep}
+                InputProps={{
+                  endAdornment: (
+                    <IconButton 
+                      size="small" 
+                      onClick={() => buscarCep(formData.cep)}
+                      disabled={!formData.cep || formData.cep.replace(/\D/g, '').length !== 8}
+                    >
+                      <LocationOnIcon color={formData.cep && formData.cep.replace(/\D/g, '').length === 8 ? 'primary' : 'disabled'} />
+                    </IconButton>
+                  ),
+                }}
               />
             </Grid>
             <Grid item xs={12} sm={8}>
@@ -214,7 +331,7 @@ export default function EditarClienteDialog({ open, cliente, onClose, onSuccess 
                 <Select
                   multiple
                   name="ramos_atividade"
-                  value={formData.ramos_atividade}
+                  value={formData.ramos_atividade || []}
                   onChange={handleChange}
                   input={<OutlinedInput label="Ramos de Atividade" />}
                   renderValue={(selected) => (
@@ -242,6 +359,7 @@ export default function EditarClienteDialog({ open, cliente, onClose, onSuccess 
             variant="outlined"
             color="primary"
             sx={{ minWidth: 100 }}
+            disabled={loading}
           >
             Cancelar
           </Button>
@@ -252,7 +370,7 @@ export default function EditarClienteDialog({ open, cliente, onClose, onSuccess 
             sx={{ minWidth: 100 }}
             disabled={loading}
           >
-            {loading ? 'Salvando...' : 'Salvar'}
+            {loading ? <CircularProgress size={24} /> : 'Salvar'}
           </Button>
         </DialogActions>
       </form>

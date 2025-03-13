@@ -11,6 +11,10 @@ import {
   MenuItem,
   Paper,
   InputAdornment,
+  CircularProgress,
+  Snackbar,
+  Alert,
+  Backdrop,
 } from '@mui/material';
 import { DateTimePicker } from '@mui/x-date-pickers/DateTimePicker';
 import { useNavigate, useParams } from 'react-router-dom';
@@ -20,6 +24,7 @@ import utc from 'dayjs/plugin/utc';
 import timezone from 'dayjs/plugin/timezone';
 import customParseFormat from 'dayjs/plugin/customParseFormat';
 import 'dayjs/locale/pt-br';
+import { NumericFormat } from 'react-number-format';
 import { clienteService, licitacaoService } from '../../services/supabase';
 
 dayjs.extend(utc);
@@ -71,6 +76,12 @@ export default function NovaLicitacao() {
     requisitos: '',
     observacoes: '',
   });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
+  const [dataErrors, setDataErrors] = useState({
+    data_abertura: false,
+    data_fim: false,
+  });
 
   useEffect(() => {
     carregarClientes();
@@ -88,6 +99,8 @@ export default function NovaLicitacao() {
   }, [id]);
 
   const carregarClientes = async () => {
+    setLoading(true);
+    setError(null);
     try {
       const data = await clienteService.listarClientes();
       if (data) {
@@ -95,14 +108,20 @@ export default function NovaLicitacao() {
       }
     } catch (error) {
       console.error('Erro ao carregar clientes:', error);
+      setError('Erro ao carregar clientes: ' + (error.message || ''));
       toast.error('Erro ao carregar clientes');
+    } finally {
+      setLoading(false);
     }
   };
 
   const carregarLicitacao = async () => {
+    setLoading(true);
+    setError(null);
     try {
       const data = await licitacaoService.buscarLicitacaoPorId(id);
       if (!data) {
+        setError('Licitação não encontrada');
         toast.error('Licitação não encontrada');
         navigate('/licitacoes');
         return;
@@ -118,6 +137,7 @@ export default function NovaLicitacao() {
           if (!dataAbertura.isValid()) {
             console.error('Data de abertura inválida:', data.data_abertura);
             dataAbertura = dayjs().tz('America/Sao_Paulo');
+            setDataErrors(prev => ({ ...prev, data_abertura: true }));
           }
         }
 
@@ -126,20 +146,22 @@ export default function NovaLicitacao() {
           if (!dataFim.isValid()) {
             console.error('Data fim inválida:', data.data_fim);
             dataFim = dataAbertura ? dataAbertura.add(1, 'day') : dayjs().tz('America/Sao_Paulo').add(1, 'day');
+            setDataErrors(prev => ({ ...prev, data_fim: true }));
           }
         }
       } catch (error) {
         console.error('Erro ao processar datas:', error);
         dataAbertura = dayjs().tz('America/Sao_Paulo');
         dataFim = dataAbertura.add(1, 'day');
+        setDataErrors({ data_abertura: true, data_fim: true });
       }
       
       setLicitacao({
         ...data,
         data_abertura: dataAbertura,
         data_fim: dataFim,
-        valor_estimado: data.valor_estimado?.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0,00',
-        lucro_estimado: data.lucro_estimado?.toLocaleString('pt-BR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) || '0,00'
+        valor_estimado: data.valor_estimado || 0,
+        lucro_estimado: data.lucro_estimado || 0
       });
 
       if (data.cliente_id) {
@@ -147,8 +169,11 @@ export default function NovaLicitacao() {
       }
     } catch (error) {
       console.error('Erro ao carregar licitação:', error);
+      setError('Erro ao carregar licitação: ' + (error.message || ''));
       toast.error('Erro ao carregar licitação');
       navigate('/licitacoes');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -197,16 +222,7 @@ export default function NovaLicitacao() {
   };
 
   const handleChange = (campo, valor) => {
-    if (campo === 'valor_estimado' || campo === 'lucro_estimado') {
-      // Remove caracteres não numéricos exceto ponto e vírgula
-      const numeroLimpo = valor.replace(/[^0-9.,]/g, '');
-      // Converte vírgula para ponto
-      const numeroFormatado = numeroLimpo.replace(',', '.');
-      setLicitacao(prev => ({
-        ...prev,
-        [campo]: numeroFormatado
-      }));
-    } else if (campo === 'data_abertura' || campo === 'data_fim') {
+    if (campo === 'data_abertura' || campo === 'data_fim') {
       // Se o valor for null ou undefined, não atualiza
       if (!valor) {
         setLicitacao(prev => ({
@@ -221,8 +237,11 @@ export default function NovaLicitacao() {
 
       // Verifica se a data é válida
       if (!dataValida.isValid()) {
+        setDataErrors(prev => ({ ...prev, [campo]: true }));
         toast.error(`Data ${campo === 'data_abertura' ? 'de abertura' : 'fim'} inválida`);
         return;
+      } else {
+        setDataErrors(prev => ({ ...prev, [campo]: false }));
       }
 
       // Garante que a data está no timezone correto
@@ -231,8 +250,11 @@ export default function NovaLicitacao() {
       // Para data_fim, verifica se é posterior à data de abertura
       if (campo === 'data_fim' && licitacao.data_abertura) {
         if (dataValida.isBefore(licitacao.data_abertura)) {
+          setDataErrors(prev => ({ ...prev, data_fim: true }));
           toast.error('A data fim deve ser posterior à data de abertura');
           return;
+        } else {
+          setDataErrors(prev => ({ ...prev, data_fim: false }));
         }
       }
 
@@ -250,27 +272,29 @@ export default function NovaLicitacao() {
 
   const handleSubmit = async (e) => {
     e.preventDefault();
+    setLoading(true);
+    setError(null);
+    
     try {
       // Validações das datas
       if (!licitacao.data_abertura || !dayjs.isDayjs(licitacao.data_abertura)) {
-        toast.error('Data de abertura inválida');
-        return;
+        setDataErrors(prev => ({ ...prev, data_abertura: true }));
+        throw new Error('Data de abertura inválida');
       }
 
       if (!licitacao.data_fim || !dayjs.isDayjs(licitacao.data_fim)) {
-        toast.error('Data fim inválida');
-        return;
+        setDataErrors(prev => ({ ...prev, data_fim: true }));
+        throw new Error('Data fim inválida');
       }
 
       if (licitacao.data_fim.isBefore(licitacao.data_abertura)) {
-        toast.error('A data fim deve ser posterior à data de abertura');
-        return;
+        setDataErrors(prev => ({ ...prev, data_fim: true }));
+        throw new Error('A data fim deve ser posterior à data de abertura');
       }
 
       // Validar ramos de atividade
       if (!licitacao.ramos_atividade || !Array.isArray(licitacao.ramos_atividade) || licitacao.ramos_atividade.length === 0) {
-        toast.error('Selecione pelo menos um ramo de atividade');
-        return;
+        throw new Error('Selecione pelo menos um ramo de atividade');
       }
 
       // Prepara os dados para envio
@@ -304,7 +328,10 @@ export default function NovaLicitacao() {
       navigate('/licitacoes');
     } catch (error) {
       console.error('Erro ao salvar licitação:', error);
+      setError('Erro ao salvar licitação: ' + (error.message || ''));
       toast.error(error.message || 'Erro ao salvar licitação');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -324,11 +351,12 @@ export default function NovaLicitacao() {
                 value={licitacao.numero}
                 onChange={(e) => handleChange('numero', e.target.value)}
                 required
+                disabled={loading}
               />
             </Grid>
 
             <Grid item xs={12} sm={6}>
-              <FormControl fullWidth required>
+              <FormControl fullWidth required disabled={loading}>
                 <InputLabel>Cliente</InputLabel>
                 <Select
                   value={licitacao.cliente_id}
@@ -352,6 +380,7 @@ export default function NovaLicitacao() {
                 value={licitacao.orgao}
                 onChange={(e) => handleChange('orgao', e.target.value)}
                 required
+                disabled={loading}
               />
             </Grid>
 
@@ -364,11 +393,12 @@ export default function NovaLicitacao() {
                 required
                 multiline
                 rows={3}
+                disabled={loading}
               />
             </Grid>
 
             <Grid item xs={12} sm={6}>
-              <FormControl fullWidth required>
+              <FormControl fullWidth required disabled={loading}>
                 <InputLabel>Modalidade</InputLabel>
                 <Select
                   value={licitacao.modalidade}
@@ -393,11 +423,13 @@ export default function NovaLicitacao() {
                 format="DD/MM/YYYY HH:mm"
                 ampm={false}
                 timezone="America/Sao_Paulo"
+                disabled={loading}
                 slotProps={{
                   textField: {
                     fullWidth: true,
                     required: true,
-                    error: !licitacao.data_abertura?.isValid()
+                    error: dataErrors.data_abertura,
+                    helperText: dataErrors.data_abertura ? 'Data de abertura inválida' : ''
                   }
                 }}
               />
@@ -407,65 +439,68 @@ export default function NovaLicitacao() {
               <DateTimePicker
                 label="Data Fim"
                 value={licitacao.data_fim}
-                onChange={(newValue) => {
-                  if (newValue && licitacao.data_abertura && dayjs(newValue).isBefore(licitacao.data_abertura)) {
-                    toast.error('A data fim deve ser posterior à data de abertura');
-                    return;
-                  }
-                  handleChange('data_fim', newValue);
-                }}
+                onChange={(newValue) => handleChange('data_fim', newValue)}
                 views={['year', 'month', 'day', 'hours', 'minutes']}
                 format="DD/MM/YYYY HH:mm"
                 ampm={false}
                 timezone="America/Sao_Paulo"
+                disabled={loading}
                 slotProps={{
                   textField: {
                     fullWidth: true,
-                    helperText: 'Data deve ser posterior à data de abertura',
-                    error: licitacao.data_fim && !licitacao.data_fim.isValid()
+                    helperText: dataErrors.data_fim ? 'Data deve ser posterior à data de abertura' : 'Data deve ser posterior à data de abertura',
+                    error: dataErrors.data_fim
                   }
                 }}
               />
             </Grid>
 
             <Grid item xs={12} sm={6}>
-              <TextField
-                fullWidth
-                label="Valor Estimado"
+              <NumericFormat
+                customInput={TextField}
+                thousandSeparator="."
+                decimalSeparator=","
+                prefix="R$ "
+                decimalScale={2}
+                fixedDecimalScale
                 value={licitacao.valor_estimado}
-                onChange={(e) => handleChange('valor_estimado', e.target.value)}
-                required
-                InputProps={{
-                  startAdornment: <InputAdornment position="start">R$</InputAdornment>,
+                onValueChange={(values) => {
+                  handleChange('valor_estimado', values.floatValue || 0);
                 }}
-                inputProps={{
-                  step: "0.01",
-                  min: "0",
-                  placeholder: "0,00"
-                }}
-              />
-            </Grid>
-
-            <Grid item xs={12} sm={6}>
-              <TextField
+                label="Valor Estimado"
                 fullWidth
-                label="Lucro Estimado"
-                value={licitacao.lucro_estimado}
-                onChange={(e) => handleChange('lucro_estimado', e.target.value)}
                 required
+                disabled={loading}
                 InputProps={{
                   startAdornment: <InputAdornment position="start">R$</InputAdornment>,
-                }}
-                inputProps={{
-                  step: "0.01",
-                  min: "0",
-                  placeholder: "0,00"
                 }}
               />
             </Grid>
 
             <Grid item xs={12} sm={6}>
-              <FormControl fullWidth required>
+              <NumericFormat
+                customInput={TextField}
+                thousandSeparator="."
+                decimalSeparator=","
+                prefix="R$ "
+                decimalScale={2}
+                fixedDecimalScale
+                value={licitacao.lucro_estimado}
+                onValueChange={(values) => {
+                  handleChange('lucro_estimado', values.floatValue || 0);
+                }}
+                label="Lucro Estimado"
+                fullWidth
+                required
+                disabled={loading}
+                InputProps={{
+                  startAdornment: <InputAdornment position="start">R$</InputAdornment>,
+                }}
+              />
+            </Grid>
+
+            <Grid item xs={12} sm={6}>
+              <FormControl fullWidth required disabled={loading}>
                 <InputLabel>Ramos de Atividade</InputLabel>
                 <Select
                   multiple
@@ -490,6 +525,7 @@ export default function NovaLicitacao() {
                 onChange={(e) => handleChange('descricao', e.target.value)}
                 multiline
                 rows={4}
+                disabled={loading}
               />
             </Grid>
 
@@ -501,6 +537,7 @@ export default function NovaLicitacao() {
                 onChange={(e) => handleChange('requisitos', e.target.value)}
                 multiline
                 rows={4}
+                disabled={loading}
               />
             </Grid>
 
@@ -512,6 +549,7 @@ export default function NovaLicitacao() {
                 onChange={(e) => handleChange('observacoes', e.target.value)}
                 multiline
                 rows={4}
+                disabled={loading}
               />
             </Grid>
 
@@ -519,12 +557,15 @@ export default function NovaLicitacao() {
               <Button
                 variant="outlined"
                 onClick={() => navigate('/licitacoes')}
+                disabled={loading}
               >
                 Cancelar
               </Button>
               <Button
                 type="submit"
                 variant="contained"
+                disabled={loading}
+                startIcon={loading && <CircularProgress size={20} color="inherit" />}
               >
                 {id ? 'Atualizar' : 'Cadastrar'}
               </Button>
@@ -532,6 +573,24 @@ export default function NovaLicitacao() {
           </Grid>
         </form>
       </Paper>
+
+      <Backdrop
+        sx={{ color: '#fff', zIndex: (theme) => theme.zIndex.drawer + 1 }}
+        open={loading}
+      >
+        <CircularProgress color="inherit" />
+      </Backdrop>
+
+      <Snackbar
+        open={!!error}
+        autoHideDuration={6000}
+        onClose={() => setError(null)}
+        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+      >
+        <Alert onClose={() => setError(null)} severity="error" sx={{ width: '100%' }}>
+          {error}
+        </Alert>
+      </Snackbar>
     </Box>
   );
 } 

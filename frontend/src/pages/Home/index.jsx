@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { Box, Typography, Grid, Paper, useTheme, useMediaQuery, Chip, Tooltip } from '@mui/material';
+import { Box, Typography, Grid, Paper, useTheme, useMediaQuery, Chip, Tooltip, Button, CircularProgress } from '@mui/material';
 import {
   Business as BusinessIcon,
   Gavel as GavelIcon,
@@ -7,6 +7,7 @@ import {
   Description as DescriptionIcon,
   CheckCircle as CheckCircleIcon,
   Warning as WarningIcon,
+  Refresh as RefreshIcon,
 } from '@mui/icons-material';
 import { format, isAfter, isBefore, addDays, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -16,6 +17,7 @@ import { clienteService, licitacaoService } from '../../services/supabase';
 export default function Home() {
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
+  const [loading, setLoading] = useState(false);
   const [dashboardData, setDashboardData] = useState({
     clientesAtivos: 0,
     licitacoesAndamento: 0,
@@ -24,7 +26,8 @@ export default function Home() {
     proximosPrazos: 0,
     documentosPendentes: 0,
     proximasLicitacoes: [],
-    prazosImportantes: []
+    prazosImportantes: [],
+    licitacoesVencidas: []
   });
 
   useEffect(() => {
@@ -33,6 +36,7 @@ export default function Home() {
 
   const carregarDados = async () => {
     try {
+      setLoading(true);
       // Buscar clientes e licitações simultaneamente
       const [clientes, licitacoes] = await Promise.all([
         clienteService.listarClientes(),
@@ -48,12 +52,12 @@ export default function Home() {
 
       // Calcular licitações finalizadas
       const licitacoesFinalizadas = licitacoes.filter(licitacao => 
-        licitacao.status === 'FINALIZADA'
+        licitacao.status === 'CONCLUIDA'
       );
 
-      // Calcular licitações em análise
+      // Calcular licitações em análise (considerando outros status que não sejam EM_ANDAMENTO ou CONCLUIDA)
       const licitacoesAnalise = licitacoes.filter(licitacao => 
-        licitacao.status === 'EM_ANALISE'
+        licitacao.status !== 'EM_ANDAMENTO' && licitacao.status !== 'CONCLUIDA'
       );
 
       // Calcular próximos prazos (licitações em andamento que vencem nos próximos 7 dias)
@@ -67,7 +71,7 @@ export default function Home() {
       // Ordenar licitações por data de fim e pegar as 5 mais próximas (apenas em andamento e análise)
       const proximasLicitacoes = licitacoes
         .filter(licitacao => 
-          (licitacao.status === 'EM_ANDAMENTO' || licitacao.status === 'EM_ANALISE') &&
+          (licitacao.status === 'EM_ANDAMENTO' || licitacao.status !== 'CONCLUIDA') &&
           isAfter(licitacao.data_fim ? new Date(licitacao.data_fim) : addDays(new Date(licitacao.data_abertura), 30), hoje)
         )
         .sort((a, b) => {
@@ -88,6 +92,13 @@ export default function Home() {
         };
       }).sort((a, b) => a.diasRestantes - b.diasRestantes);
 
+      // Calcular licitações com prazos vencidos
+      const licitacoesVencidas = licitacoes.filter(licitacao => {
+        if (licitacao.status !== 'EM_ANDAMENTO') return false;
+        const dataFim = licitacao.data_fim ? new Date(licitacao.data_fim) : addDays(new Date(licitacao.data_abertura), 30);
+        return isBefore(dataFim, hoje);
+      });
+
       setDashboardData({
         clientesAtivos: clientes.length,
         licitacoesAndamento: licitacoesAndamento.length,
@@ -96,11 +107,14 @@ export default function Home() {
         proximosPrazos: proximosPrazos.length,
         documentosPendentes: 0,
         proximasLicitacoes,
-        prazosImportantes
+        prazosImportantes,
+        licitacoesVencidas
       });
     } catch (error) {
       console.error('Erro ao carregar dados do dashboard:', error);
       toast.error('Erro ao carregar dados do dashboard');
+    } finally {
+      setLoading(false);
     }
   };
 
@@ -132,18 +146,29 @@ export default function Home() {
   ];
 
   const formatarData = (data) => {
-    if (!data) return '';
-    return format(new Date(data), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+    if (!data) return 'Não definida';
+    try {
+      return format(new Date(data), "dd 'de' MMMM 'de' yyyy", { locale: ptBR });
+    } catch (error) {
+      console.error('Erro ao formatar data:', error, data);
+      return 'Data inválida';
+    }
   };
 
   const getStatusColor = (licitacao) => {
     switch (licitacao.status) {
-      case 'EM_ANALISE':
-        return '#F59E0B';
       case 'EM_ANDAMENTO':
         return '#22C55E';
-      case 'FINALIZADA':
+      case 'CONCLUIDA':
         return '#3B82F6';
+      case 'CANCELADA':
+        return '#EF4444';
+      case 'SUSPENSA':
+        return '#F59E0B';
+      case 'FRACASSADA':
+        return '#9333EA';
+      case 'DESERTA':
+        return '#64748B';
       default:
         return '#64748B';
     }
@@ -162,21 +187,72 @@ export default function Home() {
 
   return (
     <Box sx={{ height: '100%', width: '100%', display: 'flex', flexDirection: 'column' }}>
-      <Typography 
-        variant="h4" 
-        component="h1" 
-        gutterBottom
+      <Box 
         sx={{ 
-          fontWeight: 'bold',
-          background: 'linear-gradient(45deg, #3B82F6 30%, #60A5FA 90%)',
-          WebkitBackgroundClip: 'text',
-          WebkitTextFillColor: 'transparent',
-          mb: { xs: 3, sm: 4 },
-          fontSize: { xs: '1.75rem', sm: '2rem' }
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          mb: { xs: 2, sm: 3 }
         }}
       >
-        Dashboard
-      </Typography>
+        <Typography 
+          variant="h4" 
+          component="h1" 
+          gutterBottom
+          sx={{ 
+            fontWeight: 'bold',
+            background: 'linear-gradient(45deg, #3B82F6 30%, #60A5FA 90%)',
+            WebkitBackgroundClip: 'text',
+            WebkitTextFillColor: 'transparent',
+            mb: 0,
+            fontSize: { xs: '1.75rem', sm: '2rem' }
+          }}
+        >
+          Dashboard
+        </Typography>
+        
+        <Button
+          variant="outlined"
+          color="primary"
+          startIcon={loading ? <CircularProgress size={20} /> : <RefreshIcon />}
+          onClick={carregarDados}
+          disabled={loading}
+          sx={{
+            borderRadius: 2,
+            textTransform: 'none',
+            '&:hover': {
+              transform: 'translateY(-2px)',
+              boxShadow: 2
+            },
+            transition: 'all 0.2s ease-in-out'
+          }}
+        >
+          {loading ? 'Atualizando...' : 'Atualizar Dados'}
+        </Button>
+      </Box>
+
+      {dashboardData.licitacoesVencidas.length > 0 && (
+        <Paper
+          elevation={0}
+          sx={{
+            p: 2,
+            mb: 3,
+            borderRadius: 2,
+            border: '1px solid',
+            borderColor: 'error.main',
+            bgcolor: 'error.light',
+            color: 'error.dark',
+            display: 'flex',
+            alignItems: 'center',
+            gap: 1
+          }}
+        >
+          <WarningIcon color="error" />
+          <Typography variant="body1" fontWeight="medium">
+            Atenção! Existem {dashboardData.licitacoesVencidas.length} licitações com prazos vencidos que precisam de atenção.
+          </Typography>
+        </Paper>
+      )}
 
       <Grid container spacing={{ xs: 2, sm: 3 }}>
         {stats.map((stat, index) => (
@@ -323,6 +399,11 @@ export default function Home() {
                           <WarningIcon fontSize="small" />
                           Prazo: {formatarData(licitacao.data_fim)}
                         </Typography>
+                        {licitacao.valor_estimado && (
+                          <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, fontWeight: 'medium' }}>
+                            Valor: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(licitacao.valor_estimado)}
+                          </Typography>
+                        )}
                       </Box>
                     </Box>
                   ))
@@ -399,6 +480,11 @@ export default function Home() {
                               fontWeight: 'medium',
                             }}
                           />
+                          {prazo.valor_estimado && (
+                            <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, mt: 1 }}>
+                              Valor: {new Intl.NumberFormat('pt-BR', { style: 'currency', currency: 'BRL' }).format(prazo.valor_estimado)}
+                            </Typography>
+                          )}
                         </Box>
                       </Box>
                     </Tooltip>

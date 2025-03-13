@@ -594,15 +594,16 @@ export const documentoService = {
 
   // Extrair requisitos do edital
   extrairRequisitosEdital: async (arquivo, licitacaoId) => {
+    let fileName = '';
     try {
       console.log('Iniciando extração de requisitos do edital:', { licitacaoId });
 
       // 1. Upload do arquivo para o storage
       const fileExt = arquivo.name.split('.').pop();
-      const fileName = `temp/${licitacaoId}/${Date.now()}.${fileExt}`;
+      fileName = `temp/${licitacaoId}/${Date.now()}.${fileExt}`;
       
       console.log('Fazendo upload do arquivo:', fileName);
-      const { data: uploadData, error: uploadError } = await supabase
+      const { error: uploadError } = await supabase
         .storage
         .from('documentos')
         .upload(fileName, arquivo, {
@@ -614,46 +615,35 @@ export const documentoService = {
         throw uploadError;
       }
 
-      try {
-        // 2. Obter URL pública do arquivo
-        const { data: urlData } = await supabase
-          .storage
-          .from('documentos')
-          .getPublicUrl(fileName);
+      // 2. Obter URL pública do arquivo
+      const { data: urlData } = await supabase
+        .storage
+        .from('documentos')
+        .getPublicUrl(fileName);
 
-        if (!urlData?.publicUrl) {
-          throw new Error('Não foi possível obter URL do arquivo');
-        }
-
-        // 3. Extrair texto do PDF
-        console.log('Extraindo texto do PDF...');
-        const pdfText = await extractPDFText(arquivo);
-
-        // 4. Processar os requisitos usando a função SQL com o texto extraído
-        console.log('Processando requisitos do texto extraído');
-        const { data, error: processError } = await supabase
-          .rpc('processar_requisitos_edital', {
-            p_texto: pdfText,
-            p_licitacao_id: licitacaoId
-          });
-
-        if (processError) {
-          console.error('Erro ao processar requisitos:', processError);
-          throw processError;
-        }
-
-        console.log('Requisitos processados com sucesso:', data);
-        return data || [];
-
-      } finally {
-        // 5. Remover arquivo temporário
-        console.log('Removendo arquivo temporário');
-        await supabase
-          .storage
-          .from('documentos')
-          .remove([fileName])
-          .catch(err => console.error('Erro ao remover arquivo temporário:', err));
+      if (!urlData?.publicUrl) {
+        throw new Error('Não foi possível obter URL do arquivo');
       }
+
+      // 3. Extrair texto do PDF
+      console.log('Extraindo texto do PDF...');
+      const pdfText = await extractPDFText(arquivo);
+
+      // 4. Processar os requisitos usando a função SQL com o texto extraído
+      console.log('Processando requisitos do texto extraído');
+      const { data, error: processError } = await supabase
+        .rpc('processar_requisitos_edital', {
+          p_texto: pdfText,
+          p_licitacao_id: licitacaoId
+        });
+
+      if (processError) {
+        console.error('Erro ao processar requisitos:', processError);
+        throw processError;
+      }
+
+      console.log('Requisitos processados com sucesso:', data);
+      return data || [];
     } catch (error) {
       console.error('Erro detalhado na extração de requisitos:', {
         message: error.message,
@@ -662,6 +652,16 @@ export const documentoService = {
         stack: error.stack
       });
       throw error;
+    } finally {
+      // 5. Remover arquivo temporário se foi criado
+      if (fileName) {
+        console.log('Removendo arquivo temporário');
+        await supabase
+          .storage
+          .from('documentos')
+          .remove([fileName])
+          .catch(err => console.error('Erro ao remover arquivo temporário:', err));
+      }
     }
   },
 
@@ -752,67 +752,34 @@ export const documentoService = {
 
   excluirDocumentoLicitacao: async (id, arquivoUrl, tipo) => {
     try {
-      // Se for um edital, verificar se é o último edital da licitação
-      const { data: documento, error: docError } = await supabase
-        .from('documentos_licitacao')
-        .select(`
-          *,
-          tipo_documento:tipos_documentos(*)
-        `)
-        .eq('id', id)
-        .single();
+      // Chamar a função RPC para excluir o documento e seus requisitos se necessário
+      console.log('Excluindo documento de licitação:', id);
+      const { data, error } = await supabase
+        .rpc('excluir_documento_licitacao', {
+          p_documento_id: id
+        });
 
-      if (docError) throw docError;
-
-      const isEdital = documento.tipo_documento.nome.toLowerCase().includes('edital');
-
-      if (isEdital) {
-        // Verificar se existem outros editais para esta licitação
-        const { data: outrosEditais, error: editaisError } = await supabase
-          .from('documentos_licitacao')
-          .select(`
-            id,
-            tipo_documento:tipos_documentos(*)
-          `)
-          .eq('licitacao_id', documento.licitacao_id)
-          .neq('id', id); // Excluir o documento atual da busca
-
-        if (editaisError) throw editaisError;
-
-        // Filtrar apenas os editais
-        const outrosEditaisValidos = outrosEditais?.filter(doc => 
-          doc.tipo_documento.nome.toLowerCase().includes('edital')
-        );
-
-        // Se não houver outros editais, excluir os requisitos
-        if (!outrosEditaisValidos || outrosEditaisValidos.length === 0) {
-          console.log('Excluindo requisitos da licitação:', documento.licitacao_id);
-          const { error: reqError } = await supabase
-            .from('requisitos_documentacao')
-            .delete()
-            .eq('licitacao_id', documento.licitacao_id);
-
-          if (reqError) throw reqError;
-        }
+      if (error) {
+        console.error('Erro ao chamar função RPC excluir_documento_licitacao:', error);
+        throw error;
       }
 
-      // 1. Excluir arquivo do storage
+      // Excluir o arquivo do storage (isso não pode ser feito na função SQL)
       if (arquivoUrl) {
+        console.log('Removendo arquivo do storage:', arquivoUrl);
         const { error: storageError } = await supabase
           .storage
           .from('documentos')
           .remove([arquivoUrl]);
 
-        if (storageError) throw storageError;
+        if (storageError) {
+          console.error('Erro ao remover arquivo do storage:', storageError);
+          throw storageError;
+        }
       }
 
-      // 2. Excluir registro do documento
-      const { error } = await supabase
-        .from('documentos_licitacao')
-        .delete()
-        .eq('id', id);
-
-      if (error) throw error;
+      console.log('Documento excluído com sucesso');
+      return true;
     } catch (error) {
       console.error('Erro ao excluir documento:', error);
       throw error;
@@ -821,14 +788,52 @@ export const documentoService = {
 
   // Requisitos de Documentação
   listarRequisitosDocumentacao: async (licitacaoId) => {
-    const { data, error } = await supabase
-      .from('requisitos_documentacao')
-      .select('*')
-      .eq('licitacao_id', licitacaoId)
-      .order('created_at', { ascending: false });
+    if (!licitacaoId) {
+      console.error('listarRequisitosDocumentacao: licitacaoId não fornecido');
+      return [];
+    }
+    
+    console.log('Iniciando listarRequisitosDocumentacao para licitacaoId:', licitacaoId);
+    
+    try {
+      console.log('Executando consulta para buscar requisitos...');
+      const { data, error } = await supabase
+        .from('requisitos_documentacao')
+        .select('*')
+        .eq('licitacao_id', licitacaoId)
+        .order('ordem', { ascending: true });
 
-    if (error) throw error;
-    return data;
+      if (error) {
+        console.error('Erro ao listar requisitos de documentação:', error);
+        throw error;
+      }
+
+      console.log(`Requisitos encontrados: ${data ? data.length : 0}`);
+      if (data && data.length > 0) {
+        console.log('Primeiro requisito:', data[0]);
+        console.log('Todos os requisitos:', data);
+        
+        // Garantir que todos os campos necessários estejam presentes
+        const requisitosFormatados = data.map(req => ({
+          id: req.id,
+          licitacao_id: req.licitacao_id,
+          descricao: req.descricao || '',
+          observacoes: req.observacoes || '',
+          atendido: req.atendido || false,
+          ordem: req.ordem || 0,
+          created_at: req.created_at
+        }));
+        
+        console.log('Requisitos formatados:', requisitosFormatados);
+        return requisitosFormatados;
+      } else {
+        console.log('Nenhum requisito encontrado para esta licitação');
+        return [];
+      }
+    } catch (error) {
+      console.error('Exceção ao listar requisitos de documentação:', error);
+      throw error;
+    }
   },
 
   excluirRequisitosPorLicitacao: async (licitacaoId) => {
@@ -958,8 +963,10 @@ export const relatorioService = {
   async gerarRelatorioLicitacoes(filtros = {}) {
     try {
       console.log('Gerando relatório de licitações com filtros:', filtros);
+      
+      // Chamar a função SQL com tratamento de erros mais robusto
       const { data, error } = await supabase
-        .rpc('gerar_relatorio_licitacoes', {
+        .rpc('relatorio_licitacoes_v3', {
           p_data_inicio: filtros.dataInicio ? filtros.dataInicio.toISOString() : null,
           p_data_fim: filtros.dataFim ? filtros.dataFim.toISOString() : null,
           p_status: filtros.status || null,
@@ -968,7 +975,23 @@ export const relatorioService = {
 
       if (error) {
         console.error('Erro detalhado do relatório de licitações:', error);
-        throw error;
+        
+        // Tentar chamar a função alternativa se a primeira falhar
+        const { data: altData, error: altError } = await supabase
+          .rpc('gerar_relatorio_licitacoes_v3', {
+            p_data_inicio: filtros.dataInicio ? filtros.dataInicio.toISOString() : null,
+            p_data_fim: filtros.dataFim ? filtros.dataFim.toISOString() : null,
+            p_status: filtros.status || null,
+            p_cliente_id: filtros.cliente_id || null
+          });
+          
+        if (altError) {
+          console.error('Erro também na função alternativa:', altError);
+          throw error;
+        }
+        
+        console.log('Dados obtidos da função alternativa:', altData);
+        return altData;
       }
 
       if (!data) {
@@ -998,6 +1021,7 @@ export const relatorioService = {
           ...item,
           valor_estimado: parseFloat(item.valor_estimado) || 0,
           valor_final: parseFloat(item.valor_final) || 0,
+          lucro_estimado: parseFloat(item.lucro_estimado) || 0,
           lucro_final: parseFloat(item.lucro_final) || 0
         })) : []
       };
@@ -1006,7 +1030,17 @@ export const relatorioService = {
       return resultado;
     } catch (error) {
       console.error('Erro ao gerar relatório de licitações:', error);
-      throw error;
+      // Retornar um objeto vazio em caso de erro para evitar quebrar a interface
+      return {
+        total_licitacoes: 0,
+        licitacoes_ganhas: 0,
+        licitacoes_perdidas: 0,
+        licitacoes_em_andamento: 0,
+        valor_total_ganho: 0,
+        lucro_total: 0,
+        taxa_sucesso: 0,
+        detalhes: []
+      };
     }
   },
 
@@ -1014,15 +1048,31 @@ export const relatorioService = {
   async gerarRelatorioClientes(filtros = {}) {
     try {
       console.log('Gerando relatório de clientes com filtros:', filtros);
+      
+      // Chamar a função SQL com tratamento de erros mais robusto
       const { data, error } = await supabase
-        .rpc('gerar_relatorio_clientes', {
+        .rpc('relatorio_clientes_v3', {
           p_data_inicio: filtros.dataInicio ? filtros.dataInicio.toISOString() : null,
           p_data_fim: filtros.dataFim ? filtros.dataFim.toISOString() : null
         });
 
       if (error) {
         console.error('Erro detalhado do relatório de clientes:', error);
-        throw error;
+        
+        // Tentar chamar a função alternativa se a primeira falhar
+        const { data: altData, error: altError } = await supabase
+          .rpc('gerar_relatorio_clientes_v3', {
+            p_data_inicio: filtros.dataInicio ? filtros.dataInicio.toISOString() : null,
+            p_data_fim: filtros.dataFim ? filtros.dataFim.toISOString() : null
+          });
+          
+        if (altError) {
+          console.error('Erro também na função alternativa:', altError);
+          throw error;
+        }
+        
+        console.log('Dados obtidos da função alternativa:', altData);
+        return altData;
       }
 
       if (!data) {
@@ -1054,7 +1104,13 @@ export const relatorioService = {
       return resultado;
     } catch (error) {
       console.error('Erro ao gerar relatório de clientes:', error);
-      throw error;
+      // Retornar um objeto vazio em caso de erro para evitar quebrar a interface
+      return {
+        total_clientes: 0,
+        clientes_ativos: 0,
+        valor_total_licitacoes: 0,
+        detalhes: []
+      };
     }
   },
 
@@ -1062,15 +1118,31 @@ export const relatorioService = {
   async gerarRelatorioDesempenho(filtros = {}) {
     try {
       console.log('Gerando relatório de desempenho com filtros:', filtros);
+      
+      // Chamar a função SQL com tratamento de erros mais robusto
       const { data, error } = await supabase
-        .rpc('gerar_relatorio_desempenho', {
+        .rpc('relatorio_desempenho_v3', {
           p_data_inicio: filtros.dataInicio ? filtros.dataInicio.toISOString() : null,
           p_data_fim: filtros.dataFim ? filtros.dataFim.toISOString() : null
         });
 
       if (error) {
         console.error('Erro detalhado do relatório de desempenho:', error);
-        throw error;
+        
+        // Tentar chamar a função alternativa se a primeira falhar
+        const { data: altData, error: altError } = await supabase
+          .rpc('gerar_relatorio_desempenho_v3', {
+            p_data_inicio: filtros.dataInicio ? filtros.dataInicio.toISOString() : null,
+            p_data_fim: filtros.dataFim ? filtros.dataFim.toISOString() : null
+          });
+          
+        if (altError) {
+          console.error('Erro também na função alternativa:', altError);
+          throw error;
+        }
+        
+        console.log('Dados obtidos da função alternativa:', altData);
+        return altData;
       }
 
       if (!data) {
@@ -1107,7 +1179,16 @@ export const relatorioService = {
       return resultado;
     } catch (error) {
       console.error('Erro ao gerar relatório de desempenho:', error);
-      throw error;
+      // Retornar um objeto vazio em caso de erro para evitar quebrar a interface
+      return {
+        total_licitacoes: 0,
+        taxa_sucesso: 0,
+        valor_total_ganho: 0,
+        lucro_total: 0,
+        media_prazo_fechamento: 0,
+        motivos_perda: {},
+        evolucao_mensal: []
+      };
     }
   }
 }; 
