@@ -25,6 +25,12 @@ import {
   InputLabel,
   Select,
   MenuItem,
+  CircularProgress,
+  Skeleton,
+  Snackbar,
+  Menu,
+  ListItemIcon,
+  ListItemText,
 } from '@mui/material';
 import { 
   Add as AddIcon, 
@@ -34,6 +40,9 @@ import {
   FilterList as FilterListIcon,
   Search as SearchIcon,
   Clear as ClearIcon,
+  MoreVert as MoreVertIcon,
+  Download as DownloadIcon,
+  Refresh as RefreshIcon,
 } from '@mui/icons-material';
 import NovoClienteDialog from '../../components/NovoClienteDialog';
 import EditarClienteDialog from '../../components/EditarClienteDialog';
@@ -71,11 +80,15 @@ export default function Clientes() {
     ramo_atividade: '',
   });
   const [loading, setLoading] = useState(false);
+  const [anchorEl, setAnchorEl] = useState(null);
+  const [exportLoading, setExportLoading] = useState(false);
+  const [error, setError] = useState(null);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
   const carregarClientes = async () => {
     setLoading(true);
+    setError(null);
     try {
         const data = await clienteService.listarClientes();
         let clientesFiltrados = data || [];
@@ -109,7 +122,8 @@ export default function Clientes() {
         setClientes(clientesFiltrados);
     } catch (error) {
         console.error('Erro ao carregar clientes:', error);
-        toast.error('Erro ao carregar clientes: ' + error.message);
+        setError('Erro ao carregar clientes: ' + (error.message || 'Tente novamente mais tarde'));
+        toast.error('Erro ao carregar clientes: ' + (error.message || 'Tente novamente mais tarde'));
     } finally {
         setLoading(false);
     }
@@ -162,6 +176,69 @@ export default function Clientes() {
 
   const aplicarFiltros = () => {
     carregarClientes();
+  };
+
+  const handleMenuOpen = (event) => {
+    setAnchorEl(event.currentTarget);
+  };
+
+  const handleMenuClose = () => {
+    setAnchorEl(null);
+  };
+
+  const exportarClientes = async (formato) => {
+    handleMenuClose();
+    setExportLoading(true);
+    
+    try {
+      // Preparar dados para exportação
+      const dadosExportacao = clientes.map(cliente => ({
+        'Razão Social': cliente.razao_social,
+        'CNPJ': cliente.cnpj,
+        'Email': cliente.email,
+        'Telefone': cliente.telefone,
+        'Endereço': `${cliente.endereco}, ${cliente.numero}`,
+        'Bairro': cliente.bairro,
+        'Cidade': cliente.cidade,
+        'Estado': cliente.estado,
+        'Ramos de Atividade': cliente.ramos_atividade.join(', ')
+      }));
+      
+      if (formato === 'csv') {
+        // Exportar como CSV
+        const headers = Object.keys(dadosExportacao[0]).join(',');
+        const csvData = dadosExportacao.map(row => 
+          Object.values(row).map(value => `"${value}"`).join(',')
+        ).join('\n');
+        
+        const blob = new Blob([`${headers}\n${csvData}`], { type: 'text/csv;charset=utf-8;' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `clientes_${new Date().toISOString().split('T')[0]}.csv`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      } else if (formato === 'json') {
+        // Exportar como JSON
+        const jsonData = JSON.stringify(dadosExportacao, null, 2);
+        const blob = new Blob([jsonData], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.setAttribute('download', `clientes_${new Date().toISOString().split('T')[0]}.json`);
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+      }
+      
+      toast.success(`Dados exportados com sucesso em formato ${formato.toUpperCase()}`);
+    } catch (error) {
+      console.error('Erro ao exportar dados:', error);
+      toast.error('Erro ao exportar dados: ' + (error.message || 'Tente novamente mais tarde'));
+    } finally {
+      setExportLoading(false);
+    }
   };
 
   const renderFiltros = () => (
@@ -268,37 +345,67 @@ export default function Clientes() {
 
   const MobileView = () => (
     <Box>
-      {clientes.map((cliente) => (
-        <Card key={cliente.id} sx={{ mb: 2 }}>
-          <CardContent>
-            <Typography variant="h6" gutterBottom>
-              {cliente.razao_social}
-            </Typography>
-            <Typography color="textSecondary" gutterBottom>
-              CNPJ: {cliente.cnpj}
-            </Typography>
-            <Typography variant="body2" gutterBottom>
-              {cliente.cidade} - {cliente.estado}
-            </Typography>
-            <Box sx={{ mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-              {cliente.ramos_atividade.map((ramo, index) => (
-                <Chip key={index} label={ramo} size="small" />
-              ))}
-            </Box>
-            <Box sx={{ mt: 2, display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
-              <IconButton size="small" onClick={() => handleView(cliente)}>
-                <VisibilityIcon />
-              </IconButton>
-              <IconButton size="small" onClick={() => handleEdit(cliente)}>
-                <EditIcon />
-              </IconButton>
-              <IconButton size="small" onClick={() => handleDelete(cliente.id)}>
-                <DeleteIcon />
-              </IconButton>
-            </Box>
-          </CardContent>
-        </Card>
-      ))}
+      {loading ? (
+        Array.from(new Array(3)).map((_, index) => (
+          <Card key={index} sx={{ mb: 2 }}>
+            <CardContent>
+              <Skeleton variant="text" width="70%" height={40} />
+              <Skeleton variant="text" width="40%" />
+              <Skeleton variant="text" width="60%" />
+              <Box sx={{ mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                <Skeleton variant="rectangular" width={80} height={24} sx={{ borderRadius: 1 }} />
+                <Skeleton variant="rectangular" width={100} height={24} sx={{ borderRadius: 1 }} />
+              </Box>
+            </CardContent>
+          </Card>
+        ))
+      ) : clientes.length > 0 ? (
+        clientes.map((cliente) => (
+          <Card key={cliente.id} sx={{ mb: 2 }}>
+            <CardContent>
+              <Typography variant="h6" gutterBottom>
+                {cliente.razao_social}
+              </Typography>
+              <Typography color="textSecondary" gutterBottom>
+                CNPJ: {cliente.cnpj}
+              </Typography>
+              <Typography variant="body2" gutterBottom>
+                {cliente.cidade} - {cliente.estado}
+              </Typography>
+              <Box sx={{ mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+                {cliente.ramos_atividade.map((ramo, index) => (
+                  <Chip key={index} label={ramo} size="small" />
+                ))}
+              </Box>
+              <Box sx={{ mt: 2, display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
+                <IconButton size="small" onClick={() => handleView(cliente)}>
+                  <VisibilityIcon />
+                </IconButton>
+                <IconButton size="small" onClick={() => handleEdit(cliente)}>
+                  <EditIcon />
+                </IconButton>
+                <IconButton size="small" onClick={() => handleDelete(cliente.id)}>
+                  <DeleteIcon />
+                </IconButton>
+              </Box>
+            </CardContent>
+          </Card>
+        ))
+      ) : (
+        <Box sx={{ textAlign: 'center', py: 4 }}>
+          <Typography color="text.secondary">
+            Nenhum cliente encontrado
+          </Typography>
+          <Button 
+            variant="outlined" 
+            startIcon={<RefreshIcon />} 
+            onClick={carregarClientes}
+            sx={{ mt: 2 }}
+          >
+            Atualizar
+          </Button>
+        </Box>
+      )}
     </Box>
   );
 
@@ -316,38 +423,67 @@ export default function Clientes() {
           </TableRow>
         </TableHead>
         <TableBody>
-          {clientes.map((cliente) => (
-            <TableRow key={cliente.id}>
-              <TableCell>{cliente.razao_social}</TableCell>
-              <TableCell>{cliente.cnpj}</TableCell>
-              <TableCell>{cliente.cidade}</TableCell>
-              <TableCell>{cliente.estado}</TableCell>
-              <TableCell>
-                <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                  {cliente.ramos_atividade.map((ramo, index) => (
-                    <Chip key={index} label={ramo} size="small" />
-                  ))}
-                </Box>
-              </TableCell>
-              <TableCell align="right">
-                <Tooltip title="Visualizar">
-                  <IconButton size="small" onClick={() => handleView(cliente)}>
-                    <VisibilityIcon />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Editar">
-                  <IconButton size="small" onClick={() => handleEdit(cliente)}>
-                    <EditIcon />
-                  </IconButton>
-                </Tooltip>
-                <Tooltip title="Excluir">
-                  <IconButton size="small" onClick={() => handleDelete(cliente.id)}>
-                    <DeleteIcon />
-                  </IconButton>
-                </Tooltip>
+          {loading ? (
+            Array.from(new Array(5)).map((_, index) => (
+              <TableRow key={index}>
+                <TableCell><Skeleton variant="text" /></TableCell>
+                <TableCell><Skeleton variant="text" /></TableCell>
+                <TableCell><Skeleton variant="text" /></TableCell>
+                <TableCell><Skeleton variant="text" /></TableCell>
+                <TableCell><Skeleton variant="text" /></TableCell>
+                <TableCell align="right"><Skeleton variant="text" /></TableCell>
+              </TableRow>
+            ))
+          ) : clientes.length > 0 ? (
+            clientes.map((cliente) => (
+              <TableRow key={cliente.id}>
+                <TableCell>{cliente.razao_social}</TableCell>
+                <TableCell>{cliente.cnpj}</TableCell>
+                <TableCell>{cliente.cidade}</TableCell>
+                <TableCell>{cliente.estado}</TableCell>
+                <TableCell>
+                  <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                    {cliente.ramos_atividade.map((ramo, index) => (
+                      <Chip key={index} label={ramo} size="small" />
+                    ))}
+                  </Box>
+                </TableCell>
+                <TableCell align="right">
+                  <Tooltip title="Visualizar">
+                    <IconButton size="small" onClick={() => handleView(cliente)}>
+                      <VisibilityIcon />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Editar">
+                    <IconButton size="small" onClick={() => handleEdit(cliente)}>
+                      <EditIcon />
+                    </IconButton>
+                  </Tooltip>
+                  <Tooltip title="Excluir">
+                    <IconButton size="small" onClick={() => handleDelete(cliente.id)}>
+                      <DeleteIcon />
+                    </IconButton>
+                  </Tooltip>
+                </TableCell>
+              </TableRow>
+            ))
+          ) : (
+            <TableRow>
+              <TableCell colSpan={6} align="center" sx={{ py: 3 }}>
+                <Typography color="text.secondary" sx={{ mb: 1 }}>
+                  Nenhum cliente encontrado
+                </Typography>
+                <Button 
+                  variant="outlined" 
+                  startIcon={<RefreshIcon />} 
+                  onClick={carregarClientes}
+                  size="small"
+                >
+                  Atualizar
+                </Button>
               </TableCell>
             </TableRow>
-          ))}
+          )}
         </TableBody>
       </Table>
     </TableContainer>
@@ -369,6 +505,14 @@ export default function Clientes() {
               Filtros
             </Button>
             <Button
+              variant="outlined"
+              startIcon={<DownloadIcon />}
+              onClick={handleMenuOpen}
+              disabled={loading || clientes.length === 0 || exportLoading}
+            >
+              {exportLoading ? <CircularProgress size={24} /> : 'Exportar'}
+            </Button>
+            <Button
               variant="contained"
               startIcon={<AddIcon />}
               onClick={() => setOpenNovo(true)}
@@ -378,17 +522,30 @@ export default function Clientes() {
           </Box>
         </Box>
 
+        <Menu
+          anchorEl={anchorEl}
+          open={Boolean(anchorEl)}
+          onClose={handleMenuClose}
+        >
+          <MenuItem onClick={() => exportarClientes('csv')}>
+            <ListItemIcon>
+              <DownloadIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Exportar como CSV</ListItemText>
+          </MenuItem>
+          <MenuItem onClick={() => exportarClientes('json')}>
+            <ListItemIcon>
+              <DownloadIcon fontSize="small" />
+            </ListItemIcon>
+            <ListItemText>Exportar como JSON</ListItemText>
+          </MenuItem>
+        </Menu>
+
         <Collapse in={showFilters}>
           {renderFiltros()}
         </Collapse>
 
-        {loading ? (
-          <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
-            <Typography>Carregando...</Typography>
-          </Box>
-        ) : (
-          isMobile ? <MobileView /> : <DesktopView />
-        )}
+        {isMobile ? <MobileView /> : <DesktopView />}
       </Box>
 
       {openNovo && (
@@ -428,6 +585,13 @@ export default function Clientes() {
           }}
         />
       )}
+
+      <Snackbar
+        open={!!error}
+        autoHideDuration={6000}
+        onClose={() => setError(null)}
+        message={error}
+      />
     </Container>
   );
 } 

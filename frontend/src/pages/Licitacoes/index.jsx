@@ -27,6 +27,13 @@ import {
   Chip,
   Menu,
   ListSubheader,
+  Skeleton,
+  Snackbar,
+  Alert,
+  CircularProgress,
+  TablePagination,
+  ListItemIcon,
+  ListItemText,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -39,6 +46,9 @@ import {
   Cancel as CancelIcon,
   Visibility as VisibilityIcon,
   MoreVert as MoreVertIcon,
+  Download as DownloadIcon,
+  FileDownload as FileDownloadIcon,
+  Refresh as RefreshIcon,
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers/DatePicker';
 import { toast } from 'react-toastify';
@@ -160,6 +170,13 @@ export default function Licitacoes() {
   const [anchorEl, setAnchorEl] = useState(null);
   const [selectedLicitacao, setSelectedLicitacao] = useState(null);
   const [clienteSearch, setClienteSearch] = useState('');
+  const [error, setError] = useState(null);
+  const [exportMenuAnchorEl, setExportMenuAnchorEl] = useState(null);
+  const [paginacao, setPaginacao] = useState({
+    pagina: 0,
+    itensPorPagina: 10,
+    total: 0
+  });
 
   useEffect(() => {
     carregarDados();
@@ -167,6 +184,7 @@ export default function Licitacoes() {
 
   const carregarDados = async () => {
     setLoading(true);
+    setError(null);
     try {
       // Primeiro carrega os clientes
       const clientesData = await clienteService.listarClientes();
@@ -175,8 +193,13 @@ export default function Licitacoes() {
       // Depois carrega as licitações
       const licitacoesData = await licitacaoService.listarLicitacoes();
       setLicitacoes(licitacoesData || []);
+      setPaginacao(prev => ({
+        ...prev,
+        total: licitacoesData?.length || 0
+      }));
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
+      setError(error.message || 'Erro ao carregar dados');
       toast.error('Erro ao carregar dados: ' + error.message);
     } finally {
       setLoading(false);
@@ -185,13 +208,18 @@ export default function Licitacoes() {
 
   const handleExcluir = async (id) => {
     if (window.confirm('Tem certeza que deseja excluir esta licitação?')) {
+      setLoading(true);
+      setError(null);
       try {
         await licitacaoService.excluirLicitacao(id);
         toast.success('Licitação excluída com sucesso!');
         carregarDados();
       } catch (error) {
         console.error('Erro ao excluir licitação:', error);
+        setError(error.message || 'Erro ao excluir licitação');
         toast.error('Erro ao excluir licitação');
+      } finally {
+        setLoading(false);
       }
     }
   };
@@ -237,11 +265,18 @@ export default function Licitacoes() {
 
   const aplicarFiltros = async () => {
     setLoading(true);
+    setError(null);
     try {
       const data = await licitacaoService.listarLicitacoes(filtros);
       setLicitacoes(data);
+      setPaginacao(prev => ({
+        ...prev,
+        total: data?.length || 0,
+        pagina: 0
+      }));
     } catch (error) {
       console.error('Erro ao aplicar filtros:', error);
+      setError(error.message || 'Erro ao filtrar licitações');
       toast.error('Erro ao filtrar licitações');
     } finally {
       setLoading(false);
@@ -263,6 +298,8 @@ export default function Licitacoes() {
   };
 
   const handleStatusChange = async (novoStatus) => {
+    setLoading(true);
+    setError(null);
     try {
       await licitacaoService.atualizarLicitacao(selectedLicitacao.id, {
         ...selectedLicitacao,
@@ -273,9 +310,11 @@ export default function Licitacoes() {
       carregarDados();
     } catch (error) {
       console.error('Erro ao atualizar status:', error);
+      setError(error.message || 'Erro ao atualizar status');
       toast.error('Erro ao atualizar status');
     } finally {
       handleMenuClose();
+      setLoading(false);
     }
   };
 
@@ -548,26 +587,172 @@ export default function Licitacoes() {
     </Box>
   );
 
-    return (
+  // Função para exportar dados
+  const exportarLicitacoes = (formato) => {
+    handleExportMenuClose();
+    
+    // Filtrar licitações conforme os filtros aplicados
+    const licitacoesFiltradas = licitacoes.filter((licitacao) => {
+      const matchStatus = filtros.status ? licitacao.status === filtros.status : true;
+      const matchModalidade = filtros.modalidade ? licitacao.modalidade === filtros.modalidade : true;
+      const matchBusca = filtros.cliente_id ? licitacao.cliente_id === filtros.cliente_id : true;
+      return matchStatus && matchModalidade && matchBusca;
+    });
+    
+    if (licitacoesFiltradas.length === 0) {
+      toast.info('Não há dados para exportar');
+      return;
+    }
+    
+    try {
+      // Preparar dados para exportação
+      const dadosExportacao = licitacoesFiltradas.map(licitacao => ({
+        Número: licitacao.numero,
+        Órgão: licitacao.orgao,
+        Cliente: licitacao.cliente?.razao_social || '',
+        Modalidade: getModalidadeDisplay(licitacao.modalidade),
+        Status: getStatusDisplay(licitacao.status),
+        'Data de Abertura': licitacao.data_abertura ? format(new Date(licitacao.data_abertura), 'dd/MM/yyyy', { locale: ptBR }) : '',
+        'Valor Estimado': formatarValor(licitacao.valor_estimado),
+        Objeto: licitacao.objeto
+      }));
+      
+      if (formato === 'csv') {
+        exportarCSV(dadosExportacao);
+      } else if (formato === 'json') {
+        exportarJSON(dadosExportacao);
+      }
+    } catch (error) {
+      console.error('Erro ao exportar dados:', error);
+      setError('Erro ao exportar dados: ' + (error.message || ''));
+      toast.error('Erro ao exportar dados');
+    }
+  };
+  
+  const exportarCSV = (dados) => {
+    if (dados.length === 0) return;
+    
+    // Obter cabeçalhos
+    const headers = Object.keys(dados[0]);
+    
+    // Criar conteúdo CSV
+    let csvContent = headers.join(',') + '\n';
+    
+    // Adicionar linhas
+    dados.forEach(item => {
+      const row = headers.map(header => {
+        // Escapar aspas e adicionar aspas ao redor de cada valor
+        const valor = item[header].toString().replace(/"/g, '""');
+        return `"${valor}"`;
+      }).join(',');
+      csvContent += row + '\n';
+    });
+    
+    // Criar blob e link para download
+    const blob = new Blob([csvContent], { type: 'text/csv;charset=utf-8;' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `licitacoes_${format(new Date(), 'yyyy-MM-dd')}.csv`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+  
+  const exportarJSON = (dados) => {
+    const jsonString = JSON.stringify(dados, null, 2);
+    const blob = new Blob([jsonString], { type: 'application/json' });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement('a');
+    link.setAttribute('href', url);
+    link.setAttribute('download', `licitacoes_${format(new Date(), 'yyyy-MM-dd')}.json`);
+    link.style.visibility = 'hidden';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
+  const handleExportMenuOpen = (event) => {
+    setExportMenuAnchorEl(event.currentTarget);
+  };
+
+  const handleExportMenuClose = () => {
+    setExportMenuAnchorEl(null);
+  };
+
+  // Renderização de skeletons durante carregamento
+  const renderSkeletons = () => (
+    <Box sx={{ p: 2 }}>
+      {isMobile ? (
+        <Grid container spacing={2}>
+          {[1, 2, 3, 4].map((item) => (
+            <Grid item xs={12} key={item}>
+              <Skeleton variant="rectangular" height={180} sx={{ borderRadius: 2, mb: 1 }} />
+            </Grid>
+          ))}
+        </Grid>
+      ) : (
+        <TableContainer>
+          <Table>
+            <TableHead>
+              <TableRow>
+                <TableCell><Skeleton variant="text" /></TableCell>
+                <TableCell><Skeleton variant="text" /></TableCell>
+                <TableCell><Skeleton variant="text" /></TableCell>
+                <TableCell><Skeleton variant="text" /></TableCell>
+                <TableCell><Skeleton variant="text" /></TableCell>
+                <TableCell><Skeleton variant="text" /></TableCell>
+                <TableCell><Skeleton variant="text" /></TableCell>
+                <TableCell align="right"><Skeleton variant="text" /></TableCell>
+              </TableRow>
+            </TableHead>
+            <TableBody>
+              {[1, 2, 3, 4, 5].map((item) => (
+                <TableRow key={item}>
+                  <TableCell><Skeleton variant="text" /></TableCell>
+                  <TableCell><Skeleton variant="text" /></TableCell>
+                  <TableCell><Skeleton variant="text" /></TableCell>
+                  <TableCell><Skeleton variant="text" /></TableCell>
+                  <TableCell><Skeleton variant="text" /></TableCell>
+                  <TableCell><Skeleton variant="text" /></TableCell>
+                  <TableCell><Skeleton variant="text" /></TableCell>
+                  <TableCell align="right"><Skeleton variant="rectangular" width={120} height={36} /></TableCell>
+                </TableRow>
+              ))}
+            </TableBody>
+          </Table>
+        </TableContainer>
+      )}
+    </Box>
+  );
+
+  // Licitações paginadas
+  const licitacoesPaginadas = licitacoes.slice(
+    paginacao.pagina * paginacao.itensPorPagina,
+    paginacao.pagina * paginacao.itensPorPagina + paginacao.itensPorPagina
+  );
+
+  return (
     <Box sx={{ p: 3 }}>
         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
-        <Typography variant="h4" component="h1">
+          <Typography variant="h4" component="h1">
             Licitações
           </Typography>
-        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Box sx={{ display: 'flex', gap: 2 }}>
             <Button
               variant="outlined"
-            startIcon={<FilterListIcon />}
+              startIcon={<FilterListIcon />}
               onClick={() => setShowFilters(!showFilters)}
             >
-            {showFilters ? 'Ocultar Filtros' : 'Mostrar Filtros'}
+              {showFilters ? 'Ocultar Filtros' : 'Mostrar Filtros'}
             </Button>
             <Button
               variant="contained"
               startIcon={<AddIcon />}
               onClick={handleNovaLicitacao}
             >
-            Nova Licitação
+              Nova Licitação
             </Button>
           </Box>
         </Box>
@@ -576,82 +761,119 @@ export default function Licitacoes() {
           {renderFiltros()}
         </Collapse>
 
-      {loading ? (
-        <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
-          <Typography>Carregando...</Typography>
-      </Box>
-      ) : (
-        <>
-          {isMobile ? (
-            <Box>
-              {licitacoes.map(renderItem)}
-      </Box>
-          ) : (
-            <TableContainer component={Paper}>
-        <Table>
-          <TableHead>
-            <TableRow>
-              <TableCell>Número</TableCell>
-                    <TableCell>Órgão</TableCell>
-              <TableCell>Cliente</TableCell>
-              <TableCell>Modalidade</TableCell>
-              <TableCell>Valor Estimado</TableCell>
-              <TableCell>Data de Abertura</TableCell>
-              <TableCell>Status</TableCell>
-                    <TableCell align="right">Ações</TableCell>
-            </TableRow>
-          </TableHead>
-          <TableBody>
-            {licitacoes.map((licitacao) => (
-                    <TableRow key={licitacao.id}>
-                <TableCell>{licitacao.numero}</TableCell>
-                <TableCell>{licitacao.orgao}</TableCell>
-                      <TableCell>{licitacao.cliente?.razao_social}</TableCell>
-                      <TableCell>{getModalidadeDisplay(licitacao.modalidade)}</TableCell>
-                <TableCell>{formatarValor(licitacao.valor_estimado)}</TableCell>
-                <TableCell>{formatarData(licitacao.data_abertura)}</TableCell>
-                <TableCell>
-                  <Chip
-                          label={getStatusDisplay(licitacao.status || 'EM_ANDAMENTO')}
-                          color={
-                            licitacao.status === 'CONCLUIDA' ? (licitacao.foi_ganha ? 'success' : 'error') :
-                            licitacao.status === 'EM_ANDAMENTO' ? 'primary' :
-                            licitacao.status === 'CANCELADA' ? 'error' :
-                            licitacao.status === 'SUSPENSA' ? 'warning' :
-                            licitacao.status === 'FRACASSADA' ? 'error' :
-                            licitacao.status === 'DESERTA' ? 'error' :
-                            'default'
-                          }
-                    size="small"
-                  />
-                </TableCell>
-                      <TableCell align="right">
-                  {renderAcoes(licitacao)}
-                </TableCell>
-              </TableRow>
-            ))}
-          </TableBody>
-        </Table>
-      </TableContainer>
-          )}
-        </>
-      )}
+        {loading ? (
+          renderSkeletons()
+        ) : licitacoes.length === 0 ? (
+          <Box sx={{ display: 'flex', flexDirection: 'column', alignItems: 'center', my: 4 }}>
+            <Typography variant="h6" color="text.secondary" gutterBottom>
+              Nenhuma licitação encontrada
+            </Typography>
+            <Button 
+              variant="outlined" 
+              startIcon={<SearchIcon />} 
+              onClick={limparFiltros}
+              sx={{ mt: 2 }}
+            >
+              Limpar Filtros
+            </Button>
+          </Box>
+        ) : (
+          <>
+            {isMobile ? (
+              <Box>
+                {licitacoesPaginadas.map(renderItem)}
+              </Box>
+            ) : (
+              <TableContainer component={Paper}>
+                <Table>
+                  <TableHead>
+                    <TableRow>
+                      <TableCell>Número</TableCell>
+                      <TableCell>Órgão</TableCell>
+                      <TableCell>Cliente</TableCell>
+                      <TableCell>Modalidade</TableCell>
+                      <TableCell>Valor Estimado</TableCell>
+                      <TableCell>Data de Abertura</TableCell>
+                      <TableCell>Status</TableCell>
+                      <TableCell align="right">Ações</TableCell>
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {licitacoesPaginadas.map((licitacao) => (
+                      <TableRow key={licitacao.id}>
+                        <TableCell>{licitacao.numero}</TableCell>
+                        <TableCell>{licitacao.orgao}</TableCell>
+                        <TableCell>{licitacao.cliente?.razao_social}</TableCell>
+                        <TableCell>{getModalidadeDisplay(licitacao.modalidade)}</TableCell>
+                        <TableCell>{formatarValor(licitacao.valor_estimado)}</TableCell>
+                        <TableCell>{formatarData(licitacao.data_abertura)}</TableCell>
+                        <TableCell>
+                          <Chip
+                            label={getStatusDisplay(licitacao.status || 'EM_ANDAMENTO')}
+                            color={
+                              licitacao.status === 'CONCLUIDA' ? (licitacao.foi_ganha ? 'success' : 'error') :
+                              licitacao.status === 'EM_ANDAMENTO' ? 'primary' :
+                              licitacao.status === 'CANCELADA' ? 'error' :
+                              licitacao.status === 'SUSPENSA' ? 'warning' :
+                              licitacao.status === 'FRACASSADA' ? 'error' :
+                              licitacao.status === 'DESERTA' ? 'error' :
+                              'default'
+                            }
+                            size="small"
+                          />
+                        </TableCell>
+                        <TableCell align="right">
+                          {renderAcoes(licitacao)}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+                <TablePagination
+                  component="div"
+                  count={paginacao.total}
+                  page={paginacao.pagina}
+                  onPageChange={(e, novaPagina) => setPaginacao(prev => ({ ...prev, pagina: novaPagina }))}
+                  rowsPerPage={paginacao.itensPorPagina}
+                  onRowsPerPageChange={(e) => setPaginacao(prev => ({ 
+                    ...prev, 
+                    itensPorPagina: parseInt(e.target.value, 10),
+                    pagina: 0
+                  }))}
+                  labelRowsPerPage="Itens por página:"
+                  labelDisplayedRows={({ from, to, count }) => `${from}-${to} de ${count}`}
+                />
+              </TableContainer>
+            )}
+          </>
+        )}
 
-      <Menu
-        anchorEl={anchorEl}
-        open={Boolean(anchorEl)}
-        onClose={handleMenuClose}
-      >
-        {statusLicitacao.map((status) => (
-          <MenuItem
-            key={status}
-            onClick={() => handleStatusChange(status)}
-            selected={selectedLicitacao?.status === status}
-          >
-            {getStatusDisplay(status)}
-          </MenuItem>
-        ))}
-      </Menu>
+        <Menu
+          anchorEl={anchorEl}
+          open={Boolean(anchorEl)}
+          onClose={handleMenuClose}
+        >
+          {statusLicitacao.map((status) => (
+            <MenuItem
+              key={status}
+              onClick={() => handleStatusChange(status)}
+              selected={selectedLicitacao?.status === status}
+            >
+              {getStatusDisplay(status)}
+            </MenuItem>
+          ))}
+        </Menu>
+
+        <Snackbar 
+          open={!!error} 
+          autoHideDuration={6000} 
+          onClose={() => setError(null)}
+          anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
+        >
+          <Alert onClose={() => setError(null)} severity="error" sx={{ width: '100%' }}>
+            {error}
+          </Alert>
+        </Snackbar>
     </Box>
   );
 } 

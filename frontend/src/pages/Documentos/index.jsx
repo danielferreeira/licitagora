@@ -27,7 +27,6 @@ import {
   useTheme,
   useMediaQuery,
   Tooltip,
-  FormControlLabel,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -37,11 +36,11 @@ import {
   CheckCircle as CheckCircleIcon,
   Warning as WarningIcon,
   Clear as ClearIcon,
-  Edit as EditIcon,
 } from '@mui/icons-material';
 import { DatePicker } from '@mui/x-date-pickers';
 import { toast } from 'react-toastify';
 import { clienteService, licitacaoService, documentoService } from '../../services/supabase';
+import DocumentosRequisitos from '../../components/DocumentosRequisitos';
 
 const downloadDocumento = async (id, tipo, arquivoUrl) => {
   try {
@@ -85,23 +84,17 @@ export default function Documentos() {
   const [licitacoes, setLicitacoes] = useState([]);
   const [clientesFiltrados, setClientesFiltrados] = useState([]);
   const [licitacoesFiltradas, setLicitacoesFiltradas] = useState([]);
+  const [licitacoesConcluidasFiltradas, setLicitacoesConcluidasFiltradas] = useState([]);
   const [filtroCliente, setFiltroCliente] = useState('');
   const [filtroLicitacao, setFiltroLicitacao] = useState('');
+  const [filtroLicitacaoConcluida, setFiltroLicitacaoConcluida] = useState('');
   const [tiposDocumentos, setTiposDocumentos] = useState([]);
   const [documentosCliente, setDocumentosCliente] = useState([]);
   const [documentosLicitacao, setDocumentosLicitacao] = useState([]);
-  const [requisitosDocumentacao, setRequisitosDocumentacao] = useState([]);
   const [clienteSelecionado, setClienteSelecionado] = useState('');
   const [licitacaoSelecionada, setLicitacaoSelecionada] = useState('');
   const [openUploadCliente, setOpenUploadCliente] = useState(false);
   const [openUploadLicitacao, setOpenUploadLicitacao] = useState(false);
-  const [openRequisitoDialog, setOpenRequisitoDialog] = useState(false);
-  const [requisitoEmEdicao, setRequisitoEmEdicao] = useState(null);
-  const [novoRequisito, setNovoRequisito] = useState({
-    descricao: '',
-    observacoes: '',
-    atendido: false
-  });
   const [uploadData, setUploadData] = useState({
     arquivo: null,
     tipo_documento_id: '',
@@ -110,6 +103,8 @@ export default function Documentos() {
     nome: '',
     uploading: false
   });
+  const [licitacaoEmAndamentoSelecionada, setLicitacaoEmAndamentoSelecionada] = useState('');
+  const [licitacaoConcluidaSelecionada, setLicitacaoConcluidaSelecionada] = useState('');
 
   useEffect(() => {
     carregarClientes();
@@ -123,7 +118,7 @@ export default function Documentos() {
 
   useEffect(() => {
     filtrarLicitacoes();
-  }, [filtroLicitacao, licitacoes]);
+  }, [filtroLicitacao, filtroLicitacaoConcluida, licitacoes]);
 
   useEffect(() => {
     if (clienteSelecionado) {
@@ -132,11 +127,25 @@ export default function Documentos() {
   }, [clienteSelecionado]);
 
   useEffect(() => {
-    if (licitacaoSelecionada) {
-      carregarDocumentosLicitacao(licitacaoSelecionada);
-      carregarRequisitosDocumentacao(licitacaoSelecionada);
+    // Usar o estado correto com base na aba atual
+    const licitacaoId = tabValue === 1 ? licitacaoEmAndamentoSelecionada : 
+                       tabValue === 2 ? licitacaoConcluidaSelecionada : null;
+    
+    console.log('Licitação selecionada mudou:', { 
+      tabValue, 
+      licitacaoId, 
+      licitacaoEmAndamentoSelecionada, 
+      licitacaoConcluidaSelecionada 
+    });
+    
+    if (licitacaoId) {
+      setLicitacaoSelecionada(licitacaoId);
+      carregarDocumentosLicitacao(licitacaoId);
+    } else {
+      setLicitacaoSelecionada(null);
+      setDocumentosLicitacao([]);
     }
-  }, [licitacaoSelecionada]);
+  }, [licitacaoEmAndamentoSelecionada, licitacaoConcluidaSelecionada, tabValue]);
 
   const carregarClientes = async () => {
     try {
@@ -187,6 +196,8 @@ export default function Documentos() {
   };
 
   const carregarDocumentosLicitacao = async (licitacaoId) => {
+    // Limpar os documentos antes de carregar novos
+    setDocumentosLicitacao([]);
     try {
       const data = await documentoService.listarDocumentosLicitacao(licitacaoId);
       if (data) {
@@ -195,21 +206,6 @@ export default function Documentos() {
     } catch (error) {
       console.error('Erro ao carregar documentos da licitação:', error);
       toast.error('Erro ao carregar documentos da licitação');
-    }
-  };
-
-  const carregarRequisitosDocumentacao = async (licitacaoId) => {
-    try {
-      console.log('Carregando requisitos para licitação:', licitacaoId);
-      const data = await documentoService.listarRequisitosDocumentacao(licitacaoId);
-      console.log('Requisitos carregados:', data);
-      if (data) {
-        setRequisitosDocumentacao(data);
-        console.log('Estado atualizado com os requisitos');
-      }
-    } catch (error) {
-      console.error('Erro ao carregar requisitos de documentação:', error);
-      toast.error('Erro ao carregar requisitos de documentação');
     }
   };
 
@@ -227,22 +223,39 @@ export default function Documentos() {
   };
 
   const filtrarLicitacoes = () => {
-    // Primeiro filtra por status "Em Andamento"
+    // Filtrar licitações em andamento
     const licitacoesEmAndamento = licitacoes.filter(licitacao => 
       licitacao.status === 'EM_ANDAMENTO'
     );
 
     if (!filtroLicitacao) {
       setLicitacoesFiltradas(licitacoesEmAndamento);
-      return;
+    } else {
+      const filtro = filtroLicitacao.toLowerCase();
+      const filtradas = licitacoesEmAndamento.filter(licitacao => 
+        licitacao.numero.toLowerCase().includes(filtro) ||
+        licitacao.orgao.toLowerCase().includes(filtro) ||
+        licitacao.objeto.toLowerCase().includes(filtro)
+      );
+      setLicitacoesFiltradas(filtradas);
     }
-    const filtro = filtroLicitacao.toLowerCase();
-    const filtradas = licitacoesEmAndamento.filter(licitacao => 
-      licitacao.numero.toLowerCase().includes(filtro) ||
-      licitacao.orgao.toLowerCase().includes(filtro) ||
-      licitacao.objeto.toLowerCase().includes(filtro)
+
+    // Filtrar licitações concluídas
+    const licitacoesConcluidas = licitacoes.filter(licitacao => 
+      licitacao.status === 'CONCLUIDA'
     );
-    setLicitacoesFiltradas(filtradas);
+
+    if (!filtroLicitacaoConcluida) {
+      setLicitacoesConcluidasFiltradas(licitacoesConcluidas);
+    } else {
+      const filtro = filtroLicitacaoConcluida.toLowerCase();
+      const filtradas = licitacoesConcluidas.filter(licitacao => 
+        licitacao.numero.toLowerCase().includes(filtro) ||
+        licitacao.orgao.toLowerCase().includes(filtro) ||
+        licitacao.objeto.toLowerCase().includes(filtro)
+      );
+      setLicitacoesConcluidasFiltradas(filtradas);
+    }
   };
 
   const handleUploadDocumentoCliente = async () => {
@@ -312,9 +325,13 @@ export default function Documentos() {
 
     setUploadData(prev => ({ ...prev, uploading: true }));
     try {
+      // Usar o estado correto com base na aba atual
+      const licitacaoId = tabValue === 1 ? licitacaoEmAndamentoSelecionada : 
+                         tabValue === 2 ? licitacaoConcluidaSelecionada : null;
+      
       await documentoService.uploadDocumentoLicitacao({
         arquivo: uploadData.arquivo,
-        licitacaoId: licitacaoSelecionada,
+        licitacaoId: licitacaoId,
         tipoDocumentoId: uploadData.tipo_documento_id,
         dataValidade: uploadData.data_validade,
         observacoes: uploadData.observacoes,
@@ -326,10 +343,9 @@ export default function Documentos() {
       limparUploadData();
       
       // Recarregar documentos e requisitos
-      await Promise.all([
-        carregarDocumentosLicitacao(licitacaoSelecionada),
-        carregarRequisitosDocumentacao(licitacaoSelecionada)
-      ]);
+      if (licitacaoId) {
+        await carregarDocumentosLicitacao(licitacaoId);
+      }
       
       // Mudar para a aba de requisitos após o upload do edital
       if (uploadData.tipo_documento_id === 'EDITAL') {
@@ -357,92 +373,25 @@ export default function Documentos() {
   };
 
   const handleExcluirDocumentoLicitacao = async (id, arquivoUrl, tipoDocumento) => {
-    const isEdital = tipoDocumento?.nome?.toLowerCase().includes('edital');
-    if (window.confirm(isEdital
-      ? 'Tem certeza que deseja excluir este edital? Se este for o único edital da licitação, todos os requisitos extraídos dele também serão excluídos.'
-      : 'Tem certeza que deseja excluir este documento?')) {
+    // Usar o estado correto com base na aba atual
+    const licitacaoId = tabValue === 1 ? licitacaoEmAndamentoSelecionada : 
+                       tabValue === 2 ? licitacaoConcluidaSelecionada : null;
+    
+    // Verificar se a licitação está concluída
+    const licitacao = licitacoes.find(l => l.id === licitacaoId);
+    if (licitacao && licitacao.status === 'CONCLUIDA') {
+      toast.error('Não é possível excluir documentos de licitações concluídas');
+      return;
+    }
+
+    if (window.confirm(`Tem certeza que deseja excluir este documento?`)) {
       try {
-        // Excluir o documento (e possivelmente os requisitos se for o último edital)
         await documentoService.excluirDocumentoLicitacao(id, arquivoUrl, tipoDocumento);
-        
+        setDocumentosLicitacao(prev => prev.filter(doc => doc.id !== id));
         toast.success('Documento excluído com sucesso!');
-        
-        // Recarregar documentos e requisitos
-        await Promise.all([
-          carregarDocumentosLicitacao(licitacaoSelecionada),
-          carregarRequisitosDocumentacao(licitacaoSelecionada)
-        ]);
       } catch (error) {
         console.error('Erro ao excluir documento:', error);
         toast.error('Erro ao excluir documento');
-      }
-    }
-  };
-
-  const handleAtualizarRequisito = async (id, atendido) => {
-    try {
-      await documentoService.atualizarRequisito(id, { atendido });
-      toast.success('Requisito atualizado com sucesso!');
-      carregarRequisitosDocumentacao(licitacaoSelecionada);
-    } catch (error) {
-      console.error('Erro ao atualizar requisito:', error);
-      toast.error('Erro ao atualizar requisito');
-    }
-  };
-
-  const handleAdicionarRequisito = async () => {
-    try {
-      await documentoService.criarRequisito({
-        ...novoRequisito,
-        licitacao_id: licitacaoSelecionada
-      });
-
-      toast.success('Requisito adicionado com sucesso!');
-      setOpenRequisitoDialog(false);
-      setNovoRequisito({
-        descricao: '',
-        observacoes: '',
-        atendido: false
-      });
-      carregarRequisitosDocumentacao(licitacaoSelecionada);
-    } catch (error) {
-      console.error('Erro ao adicionar requisito:', error);
-      toast.error('Erro ao adicionar requisito');
-    }
-  };
-
-  const handleEditarRequisito = async () => {
-    try {
-      await documentoService.atualizarRequisito(requisitoEmEdicao.id, {
-        descricao: novoRequisito.descricao,
-        observacoes: novoRequisito.observacoes,
-        atendido: novoRequisito.atendido
-      });
-
-      toast.success('Requisito atualizado com sucesso!');
-      setOpenRequisitoDialog(false);
-      setRequisitoEmEdicao(null);
-      setNovoRequisito({
-        descricao: '',
-        observacoes: '',
-        atendido: false
-      });
-      carregarRequisitosDocumentacao(licitacaoSelecionada);
-    } catch (error) {
-      console.error('Erro ao atualizar requisito:', error);
-      toast.error('Erro ao atualizar requisito');
-    }
-  };
-
-  const handleExcluirRequisito = async (id) => {
-    if (window.confirm('Tem certeza que deseja excluir este requisito?')) {
-      try {
-        await documentoService.excluirRequisito(id);
-        toast.success('Requisito excluído com sucesso!');
-        carregarRequisitosDocumentacao(licitacaoSelecionada);
-      } catch (error) {
-        console.error('Erro ao excluir requisito:', error);
-        toast.error('Erro ao excluir requisito');
       }
     }
   };
@@ -459,31 +408,76 @@ export default function Documentos() {
   };
 
   const handleChangeTab = (event, newValue) => {
+    console.log('Mudando para a aba:', newValue);
+    
+    // Limpar completamente o estado ao trocar de aba
     setTabValue(newValue);
+    setClienteSelecionado(null);
+    
+    // Limpar os estados específicos de cada aba
+    if (newValue !== 1) {
+      setLicitacaoEmAndamentoSelecionada(null);
+    }
+    if (newValue !== 2) {
+      setLicitacaoConcluidaSelecionada(null);
+    }
+    
+    // Limpar os documentos
+    setDocumentosCliente([]);
+    setDocumentosLicitacao([]);
+    
+    // Resetar também a aba de documentos/requisitos
+    setDocumentosTabValue(0);
   };
 
-  const handleChangeDocumentosTab = (event, newValue) => {
+  const handleDocumentosTabChange = (event, newValue) => {
+    console.log('Mudando para a aba de documentos:', newValue);
     setDocumentosTabValue(newValue);
+    
+    // Limpar documentos ao trocar entre documentos e requisitos
+    if (newValue === 0) {
+      // Se estiver voltando para a aba de documentos, recarregar os documentos
+      // Usar o estado correto com base na aba atual
+      const licitacaoId = tabValue === 1 ? licitacaoEmAndamentoSelecionada : 
+                         tabValue === 2 ? licitacaoConcluidaSelecionada : null;
+      
+      if (licitacaoId) {
+        console.log('Recarregando documentos para licitação:', licitacaoId);
+        carregarDocumentosLicitacao(licitacaoId);
+      }
+    } else if (newValue === 1) {
+      // Forçar uma nova renderização do componente DocumentosRequisitos
+      console.log('Forçando nova renderização do componente DocumentosRequisitos');
+      // Não é necessário fazer nada aqui, pois a chave única já força a recriação
+    }
   };
 
-  const abrirDialogoEditarRequisito = (requisito) => {
-    setRequisitoEmEdicao(requisito);
-    setNovoRequisito({
-      descricao: requisito.descricao,
-      observacoes: requisito.observacoes || '',
-      atendido: requisito.atendido
-    });
-    setOpenRequisitoDialog(true);
+  const handleLicitacaoClick = (licitacaoId) => {
+    console.log('Licitação em andamento clicada:', licitacaoId);
+    
+    // Se clicar na mesma licitação, desseleciona
+    if (licitacaoId === licitacaoEmAndamentoSelecionada) {
+      setLicitacaoEmAndamentoSelecionada(null);
+    } else {
+      setLicitacaoEmAndamentoSelecionada(licitacaoId);
+    }
+    
+    // Resetar a aba para documentos
+    setDocumentosTabValue(0);
   };
 
-  const abrirDialogoNovoRequisito = () => {
-    setRequisitoEmEdicao(null);
-    setNovoRequisito({
-      descricao: '',
-      observacoes: '',
-      atendido: false
-    });
-    setOpenRequisitoDialog(true);
+  const handleLicitacaoConcluidaClick = (licitacaoId) => {
+    console.log('Licitação concluída clicada:', licitacaoId);
+    
+    // Se clicar na mesma licitação, desseleciona
+    if (licitacaoId === licitacaoConcluidaSelecionada) {
+      setLicitacaoConcluidaSelecionada(null);
+    } else {
+      setLicitacaoConcluidaSelecionada(licitacaoId);
+    }
+    
+    // Resetar a aba para documentos
+    setDocumentosTabValue(0);
   };
 
   return (
@@ -506,6 +500,7 @@ export default function Documentos() {
         >
           <Tab label="Documentos do Cliente" />
           <Tab label="Documentos da Licitação" />
+          <Tab label="Licitações Concluídas" />
         </Tabs>
 
         <Box sx={{ flex: 1, overflow: 'hidden' }}>
@@ -752,8 +747,8 @@ export default function Documentos() {
                           <ListItem
                             key={licitacao.id}
                             button
-                            selected={licitacaoSelecionada === licitacao.id}
-                            onClick={() => setLicitacaoSelecionada(licitacao.id)}
+                            selected={licitacaoEmAndamentoSelecionada === licitacao.id}
+                            onClick={() => handleLicitacaoClick(licitacao.id)}
                             sx={{
                               borderRadius: 1,
                               mb: 0.5,
@@ -771,7 +766,7 @@ export default function Documentos() {
                               secondary={`${licitacao.orgao} - ${licitacao.objeto}`}
                               primaryTypographyProps={{
                                 variant: 'subtitle2',
-                                fontWeight: licitacaoSelecionada === licitacao.id ? 600 : 400
+                                fontWeight: licitacaoEmAndamentoSelecionada === licitacao.id ? 600 : 400
                               }}
                             />
                           </ListItem>
@@ -796,14 +791,14 @@ export default function Documentos() {
               </Grid>
 
               <Grid item xs={12} md={8}>
-                {licitacaoSelecionada ? (
+                {licitacaoEmAndamentoSelecionada ? (
                   <Grid container spacing={3}>
                     <Grid item xs={12}>
                       <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
                         <Tabs 
                           value={documentosTabValue} 
-                          onChange={handleChangeDocumentosTab}
-                          aria-label="documentos licitacao tabs"
+                          onChange={handleDocumentosTabChange}
+                          variant="fullWidth"
                         >
                           <Tab label="Documentos" />
                           <Tab label="Requisitos" />
@@ -811,63 +806,44 @@ export default function Documentos() {
                       </Box>
 
                       {documentosTabValue === 0 && (
-                        <Card 
-                          elevation={0}
-                          sx={{ 
-                        border: '1px solid',
-                        borderColor: 'divider',
-                        borderRadius: 2
-                          }}
-                        >
-                        <CardContent>
-                          <Box sx={{ 
-                            display: 'flex', 
-                            justifyContent: 'space-between', 
-                            alignItems: 'center',
-                            mb: 3 
-                          }}>
-                            <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                              Documentos da Licitação
-                            </Typography>
+                        <Card elevation={0} sx={{ 
+                          border: '1px solid',
+                          borderColor: 'divider',
+                          borderRadius: 2
+                        }}>
+                          <CardContent>
+                            <Box sx={{ 
+                              display: 'flex', 
+                              justifyContent: 'space-between', 
+                              alignItems: 'center',
+                              mb: 3 
+                            }}>
+                              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                                Documentos
+                              </Typography>
+                              {tabValue === 1 && (
                                 <Button
                                   variant="contained"
-                                startIcon={<UploadIcon />}
+                                  startIcon={<AddIcon />}
                                   onClick={() => setOpenUploadLicitacao(true)}
-                                  disabled={licitacoes.find(l => l.id === licitacaoSelecionada)?.status !== 'EM_ANDAMENTO'}
                                 >
-                                Upload de Documento
+                                  Adicionar Documento
                                 </Button>
-                          </Box>
-
-                          {licitacoes.find(l => l.id === licitacaoSelecionada)?.status !== 'EM_ANDAMENTO' && (
-                            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                              Documentos só podem ser adicionados quando a licitação estiver Em Andamento
-                            </Typography>
-                          )}
+                              )}
+                            </Box>
 
                             {documentosLicitacao.length > 0 ? (
                               <List>
-                            {documentosLicitacao.map((documento) => (
+                                {documentosLicitacao.map((documento) => (
                                   <ListItem
                                     key={documento.id}
-                                  sx={{ 
-                                    border: '1px solid',
-                                      borderColor: 'divider',
-                                      borderRadius: 1,
-                                      mb: 1,
-                                      '&:last-child': { mb: 0 }
+                                    divider
+                                    sx={{
+                                      display: 'flex',
+                                      justifyContent: 'space-between',
+                                      alignItems: 'flex-start',
+                                      py: 2
                                     }}
-                                    secondaryAction={
-                                      <IconButton
-                                        edge="end"
-                                        aria-label="excluir"
-                                        onClick={() => handleExcluirDocumentoLicitacao(documento.id, documento.arquivo_url, documento.tipo_documento)}
-                                        disabled={licitacoes.find(l => l.id === licitacaoSelecionada)?.status !== 'EM_ANDAMENTO'}
-                                        sx={{ color: 'error.main' }}
-                                      >
-                                        <DeleteIcon />
-                                      </IconButton>
-                                    }
                                   >
                                     <ListItemText
                                       primary={
@@ -896,15 +872,25 @@ export default function Documentos() {
                                               Observações: {documento.observacoes}
                                       </Typography>
                                     )}
-                                    <Button
-                                      variant="outlined"
-                                      size="small"
-                                            startIcon={<DescriptionIcon />}
-                                            onClick={() => downloadDocumento(documento.id, 'licitacao', documento.arquivo_url)}
-                                            sx={{ mt: 1 }}
-                                    >
-                                            Visualizar Documento
-                                    </Button>
+                                    <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                                      <Button
+                                        variant="outlined"
+                                        size="small"
+                                        startIcon={<DescriptionIcon />}
+                                        onClick={() => downloadDocumento(documento.id, 'licitacao', documento.arquivo_url)}
+                                      >
+                                        Visualizar Documento
+                                      </Button>
+                                      <Button
+                                        variant="outlined"
+                                        size="small"
+                                        color="error"
+                                        startIcon={<DeleteIcon />}
+                                        onClick={() => handleExcluirDocumentoLicitacao(documento.id, documento.arquivo_url, documento.tipo_documento)}
+                                      >
+                                        Excluir
+                                      </Button>
+                                    </Box>
                                         </Box>
                                       }
                                     />
@@ -916,133 +902,20 @@ export default function Documentos() {
                                 Nenhum documento encontrado
                               </Typography>
                             )}
-                        </CardContent>
-                      </Card>
+                          </CardContent>
+                        </Card>
                       )}
 
                       {documentosTabValue === 1 && (
-                      <Card 
-                        elevation={0}
-                        sx={{ 
-                          border: '1px solid',
-                          borderColor: 'divider',
-                          borderRadius: 2
-                        }}
-                      >
-                        <CardContent>
-                          <Box sx={{ 
-                            display: 'flex', 
-                            justifyContent: 'space-between', 
-                            alignItems: 'center',
-                            mb: 3 
-                          }}>
-                            <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                              Requisitos do Edital
-                            </Typography>
-                            <Button
-                              variant="contained"
-                              startIcon={<AddIcon />}
-                              onClick={abrirDialogoNovoRequisito}
-                              disabled={licitacoes.find(l => l.id === licitacaoSelecionada)?.status !== 'EM_ANDAMENTO'}
-                            >
-                              Adicionar Requisito
-                            </Button>
-                          </Box>
-
-                          {licitacoes.find(l => l.id === licitacaoSelecionada)?.status !== 'EM_ANDAMENTO' && (
-                            <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                              Requisitos só podem ser adicionados quando a licitação estiver Em Andamento
-                            </Typography>
+                        <Box sx={{ position: 'relative', width: '100%', minHeight: '400px' }}>
+                          {licitacaoEmAndamentoSelecionada && (
+                            <DocumentosRequisitos 
+                              licitacaoId={licitacaoEmAndamentoSelecionada} 
+                              licitacaoStatus={licitacoes.find(l => l.id === licitacaoEmAndamentoSelecionada)?.status || 'EM_ANDAMENTO'}
+                              key={`andamento-${licitacaoEmAndamentoSelecionada}-tab-${tabValue}-${documentosTabValue}-${Date.now()}`}
+                            />
                           )}
-
-                          {requisitosDocumentacao.length > 0 ? (
-                              <List>
-                              {requisitosDocumentacao.map((requisito) => (
-                                <ListItem
-                                  key={requisito.id}
-                                  sx={{
-                                    border: '1px solid',
-                                    borderColor: 'divider',
-                                      borderRadius: 1,
-                                      mb: 1,
-                                      '&:last-child': { mb: 0 },
-                                      bgcolor: requisito.atendido ? 'success.lighter' : 'background.paper',
-                                      transition: 'background-color 0.3s ease',
-                                      '&:hover': {
-                                        bgcolor: requisito.atendido ? 'success.light' : 'action.hover'
-                                      }
-                                    }}
-                                  >
-                                    <ListItemText
-                                      primary={
-                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-                                          <Typography 
-                                            variant="subtitle1" 
-                                            component="span"
-                                            sx={{
-                                              color: requisito.atendido ? 'success.dark' : 'text.primary'
-                                            }}
-                                          >
-                                            {requisito.descricao}
-                                          </Typography>
-                                          {requisito.atendido && (
-                                            <Chip
-                                              icon={<CheckCircleIcon />}
-                                              label="Atendido"
-                                              color="success"
-                                              size="small"
-                                            />
-                                          )}
-                                        </Box>
-                                      }
-                                      secondary={
-                                        <Box sx={{ mt: 1 }}>
-                                          {requisito.observacoes && (
-                                            <Typography variant="body2" color="text.secondary">
-                                              Observações: {requisito.observacoes}
-                                            </Typography>
-                                          )}
-                                          {requisito.documento_nome && (
-                                            <Typography variant="body2" color="text.secondary">
-                                              Documento vinculado: {requisito.documento_nome}
-                                            </Typography>
-                                          )}
-                                        </Box>
-                                      }
-                                    />
-                                    <Box sx={{ display: 'flex', gap: 1, ml: 2, alignItems: 'center' }}>
-                                      <Checkbox
-                                        checked={requisito.atendido}
-                                        onChange={(e) => handleAtualizarRequisito(requisito.id, e.target.checked)}
-                                        disabled={licitacoes.find(l => l.id === licitacaoSelecionada)?.status !== 'EM_ANDAMENTO'}
-                                        color="success"
-                                      />
-                                      <IconButton
-                                        size="small"
-                                        onClick={() => abrirDialogoEditarRequisito(requisito)}
-                                        disabled={licitacoes.find(l => l.id === licitacaoSelecionada)?.status !== 'EM_ANDAMENTO'}
-                                      >
-                                        <EditIcon fontSize="small" />
-                                      </IconButton>
-                                      <IconButton
-                                        size="small"
-                                        onClick={() => handleExcluirRequisito(requisito.id)}
-                                        disabled={licitacoes.find(l => l.id === licitacaoSelecionada)?.status !== 'EM_ANDAMENTO'}
-                                        sx={{ color: 'error.main' }}
-                                      >
-                                        <DeleteIcon fontSize="small" />
-                                      </IconButton>
-                                  </Box>
-                                </ListItem>
-                              ))}
-                            </List>
-                          ) : (
-                            <Typography variant="body2" color="text.secondary" align="center">
-                              Nenhum requisito encontrado. Faça o upload do edital para extrair os requisitos ou adicione manualmente.
-                            </Typography>
-                          )}
-                        </CardContent>
-                      </Card>
+                        </Box>
                       )}
                     </Grid>
                   </Grid>
@@ -1062,6 +935,228 @@ export default function Documentos() {
                   >
                     <Typography variant="subtitle1" color="text.secondary">
                       Selecione uma licitação para visualizar seus documentos
+                    </Typography>
+                  </Box>
+                )}
+              </Grid>
+            </Grid>
+          </TabPanel>
+
+          <TabPanel value={tabValue} index={2}>
+            <Grid container spacing={3}>
+              <Grid item xs={12} md={4}>
+                <Card elevation={0} sx={{ 
+                  border: '1px solid',
+                  borderColor: 'divider',
+                  borderRadius: 2,
+                  height: '100%'
+                }}>
+                  <CardContent>
+                    <Typography variant="h6" sx={{ mb: 2, fontWeight: 600 }}>
+                      Selecionar Licitação Concluída
+                    </Typography>
+
+                    <TextField
+                      fullWidth
+                      label="Buscar Licitação"
+                      value={filtroLicitacaoConcluida}
+                      onChange={(e) => setFiltroLicitacaoConcluida(e.target.value)}
+                      placeholder="Digite o número, órgão ou objeto"
+                      size="small"
+                      sx={{ mb: 2 }}
+                      InputProps={{
+                        endAdornment: filtroLicitacaoConcluida && (
+                          <IconButton size="small" onClick={() => setFiltroLicitacaoConcluida('')}>
+                            <ClearIcon />
+                          </IconButton>
+                        )
+                      }}
+                    />
+
+                    <List 
+                      sx={{ 
+                        maxHeight: 'calc(100vh - 400px)', 
+                        overflow: 'auto',
+                        bgcolor: 'background.default',
+                        borderRadius: 1,
+                        p: 1
+                      }}
+                    >
+                      {licitacoesConcluidasFiltradas.length > 0 ? (
+                        licitacoesConcluidasFiltradas.map((licitacao) => (
+                          <ListItem
+                            key={licitacao.id}
+                            button
+                            selected={licitacaoConcluidaSelecionada === licitacao.id}
+                            onClick={() => handleLicitacaoConcluidaClick(licitacao.id)}
+                            sx={{
+                              borderRadius: 1,
+                              mb: 0.5,
+                              '&.Mui-selected': {
+                                bgcolor: 'primary.light',
+                                color: 'primary.contrastText',
+                                '&:hover': {
+                                  bgcolor: 'primary.main',
+                                },
+                              },
+                            }}
+                          >
+                            <ListItemText
+                              primary={licitacao.numero}
+                              secondary={`${licitacao.orgao} - ${licitacao.objeto}`}
+                              primaryTypographyProps={{
+                                variant: 'subtitle2',
+                                fontWeight: licitacaoConcluidaSelecionada === licitacao.id ? 600 : 400
+                              }}
+                            />
+                          </ListItem>
+                        ))
+                      ) : (
+                        <Box sx={{ 
+                          p: 2, 
+                          textAlign: 'center',
+                          color: 'text.secondary'
+                        }}>
+                          <Typography variant="body2">
+                            Não há licitações concluídas no momento.
+                          </Typography>
+                          <Typography variant="body2" sx={{ mt: 1 }}>
+                            Somente licitações com status "Concluída" são exibidas aqui.
+                          </Typography>
+                        </Box>
+                      )}
+                    </List>
+                  </CardContent>
+                </Card>
+              </Grid>
+
+              <Grid item xs={12} md={8}>
+                {licitacaoConcluidaSelecionada ? (
+                  <Grid container spacing={3}>
+                    <Grid item xs={12}>
+                      <Box sx={{ borderBottom: 1, borderColor: 'divider', mb: 2 }}>
+                        <Tabs 
+                          value={documentosTabValue} 
+                          onChange={handleDocumentosTabChange}
+                          variant="fullWidth"
+                        >
+                          <Tab label="Documentos" />
+                          <Tab label="Requisitos" />
+                        </Tabs>
+                      </Box>
+
+                      {documentosTabValue === 0 && (
+                        <Card elevation={0} sx={{ 
+                          border: '1px solid',
+                          borderColor: 'divider',
+                          borderRadius: 2
+                        }}>
+                          <CardContent>
+                            <Box sx={{ 
+                              display: 'flex', 
+                              justifyContent: 'space-between', 
+                              alignItems: 'center',
+                              mb: 3 
+                            }}>
+                              <Typography variant="h6" sx={{ fontWeight: 600 }}>
+                                Documentos
+                              </Typography>
+                            </Box>
+
+                            {documentosLicitacao.length > 0 ? (
+                              <List>
+                                {documentosLicitacao.map((documento) => (
+                                  <ListItem
+                                    key={documento.id}
+                                    divider
+                                    sx={{
+                                      display: 'flex',
+                                      justifyContent: 'space-between',
+                                      alignItems: 'flex-start',
+                                      py: 2
+                                    }}
+                                  >
+                                    <ListItemText
+                                      primary={
+                                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+                                          <DescriptionIcon color="primary" />
+                                          <Typography variant="subtitle1" component="span">
+                                          {documento.nome}
+                                        </Typography>
+                                          {documento.tipo_documento?.nome && (
+                                        <Chip
+                                              label={documento.tipo_documento.nome}
+                                              color="primary"
+                                          size="small"
+                                              sx={{ ml: 1 }}
+                                        />
+                                          )}
+                                      </Box>
+                                      }
+                                      secondary={
+                                        <Box sx={{ mt: 1 }}>
+                                          <Typography variant="body2" color="text.secondary">
+                                            Arquivo: {documento.nome_arquivo}
+                                          </Typography>
+                                    {documento.observacoes && (
+                                            <Typography variant="body2" color="text.secondary">
+                                              Observações: {documento.observacoes}
+                                      </Typography>
+                                    )}
+                                    <Box sx={{ display: 'flex', gap: 1, mt: 1 }}>
+                                      <Button
+                                        variant="outlined"
+                                        size="small"
+                                        startIcon={<DescriptionIcon />}
+                                        onClick={() => downloadDocumento(documento.id, 'licitacao', documento.arquivo_url)}
+                                      >
+                                        Visualizar Documento
+                                      </Button>
+                                    </Box>
+                                        </Box>
+                                      }
+                                    />
+                                  </ListItem>
+                                ))}
+                              </List>
+                            ) : (
+                              <Typography variant="body2" color="text.secondary" align="center">
+                                Nenhum documento encontrado
+                              </Typography>
+                            )}
+                          </CardContent>
+                        </Card>
+                      )}
+
+                      {documentosTabValue === 1 && (
+                        <Box sx={{ position: 'relative', width: '100%', minHeight: '400px' }}>
+                          {licitacaoConcluidaSelecionada && (
+                            <DocumentosRequisitos 
+                              licitacaoId={licitacaoConcluidaSelecionada} 
+                              licitacaoStatus="CONCLUIDA"
+                              key={`concluida-${licitacaoConcluidaSelecionada}-tab-${tabValue}-${documentosTabValue}-${Date.now()}`}
+                            />
+                          )}
+                        </Box>
+                      )}
+                    </Grid>
+                  </Grid>
+                ) : (
+                  <Box 
+                    sx={{ 
+                      height: '100%',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                      p: 3,
+                      borderRadius: 2,
+                      bgcolor: 'background.paper',
+                      border: '1px dashed',
+                      borderColor: 'divider'
+                    }}
+                  >
+                    <Typography variant="subtitle1" color="text.secondary">
+                      Selecione uma licitação concluída para visualizar seus documentos
                     </Typography>
                   </Box>
                 )}
@@ -1246,78 +1341,6 @@ export default function Documentos() {
           >
             {uploadData.uploading ? 'Enviando...' : 'Enviar'}
           </Button>
-        </DialogActions>
-      </Dialog>
-
-      <Dialog open={openRequisitoDialog} onClose={() => setOpenRequisitoDialog(false)} maxWidth="sm" fullWidth>
-        <DialogTitle sx={{ pb: 1 }}>
-          {requisitoEmEdicao ? 'Editar Requisito' : 'Adicionar Novo Requisito'}
-        </DialogTitle>
-        <DialogContent>
-          <Box sx={{ 
-            mt: 3, 
-            display: 'flex', 
-            flexDirection: 'column', 
-            gap: 3 
-          }}>
-            <TextField
-              label="Descrição"
-              value={novoRequisito.descricao}
-              onChange={(e) => setNovoRequisito({ ...novoRequisito, descricao: e.target.value })}
-              fullWidth
-              multiline
-              rows={10}
-              required
-              error={!novoRequisito.descricao}
-              helperText={!novoRequisito.descricao ? "A descrição é obrigatória" : ""}
-            />
-            <TextField
-              label="Observações"
-              multiline
-              rows={3}
-              value={novoRequisito.observacoes}
-              onChange={(e) => setNovoRequisito({ ...novoRequisito, observacoes: e.target.value })}
-              fullWidth
-              placeholder="Adicione informações complementares sobre o requisito"
-            />
-            <FormControlLabel
-              control={
-                <Checkbox
-                  checked={novoRequisito.atendido}
-                  onChange={(e) => setNovoRequisito({ ...novoRequisito, atendido: e.target.checked })}
-                  color="success"
-                />
-              }
-              label="Requisito Atendido"
-            />
-          </Box>
-        </DialogContent>
-        <DialogActions sx={{ px: 3, pb: 3 }}>
-          <Button 
-            onClick={() => setOpenRequisitoDialog(false)}
-            variant="outlined"
-          >
-            Cancelar
-          </Button>
-          {requisitoEmEdicao ? (
-            <Button
-              onClick={handleEditarRequisito}
-              variant="contained"
-              color="primary"
-              disabled={!novoRequisito.descricao}
-            >
-              Atualizar
-            </Button>
-          ) : (
-            <Button
-              onClick={handleAdicionarRequisito}
-              variant="contained"
-              color="primary"
-              disabled={!novoRequisito.descricao}
-            >
-              Adicionar
-            </Button>
-          )}
         </DialogActions>
       </Dialog>
     </Box>

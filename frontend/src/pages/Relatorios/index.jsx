@@ -29,11 +29,16 @@ import {
   TrendingDown as TrendingDownIcon,
   Business as BusinessIcon,
   Group as GroupIcon,
+  Add as AddIcon,
+  Storage as StorageIcon,
+  FilterList as FilterListIcon,
 } from '@mui/icons-material';
 import { toast } from 'react-toastify';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
-import { clienteService, relatorioService } from '../../services/supabase';
+import { clienteService, relatorioService, licitacaoService } from '../../services/supabase';
+import { supabase } from '../../config/supabase';
+import { useNavigate } from 'react-router-dom';
 
 export default function Relatorios() {
   const [clientes, setClientes] = useState([]);
@@ -52,6 +57,8 @@ export default function Relatorios() {
     clientes: false,
     desempenho: false
   });
+  const [verificandoDados, setVerificandoDados] = useState(false);
+  const navigate = useNavigate();
 
   useEffect(() => {
     carregarClientes();
@@ -210,24 +217,27 @@ export default function Relatorios() {
         >
           Relatórios
         </Typography>
-        <Button
-          variant="contained"
-          startIcon={<AssessmentIcon />}
-          onClick={aplicarFiltros}
-          sx={{
-            borderRadius: 2,
-            textTransform: 'none',
-            px: 3,
-            py: 1,
-            '&:hover': {
-              transform: 'translateY(-2px)',
-              boxShadow: 4
-            },
-            transition: 'all 0.2s ease-in-out'
-          }}
-        >
-          Gerar Relatório
-        </Button>
+        <Box sx={{ display: 'flex', gap: 2 }}>
+          <Button
+            variant="outlined"
+            color="secondary"
+            startIcon={<AddIcon />}
+            onClick={gerarRelatorios}
+            sx={{
+              borderRadius: 2,
+              textTransform: 'none',
+              px: 3,
+              py: 1,
+              '&:hover': {
+                transform: 'translateY(-2px)',
+                boxShadow: 2
+              },
+              transition: 'all 0.2s ease-in-out'
+            }}
+          >
+            Gerar Relatório
+          </Button>
+        </Box>
       </Box>
 
       <Paper sx={{ p: 3, mb: 3 }}>
@@ -305,7 +315,7 @@ export default function Relatorios() {
               fullWidth
               variant="contained"
               onClick={aplicarFiltros}
-              startIcon={<AssessmentIcon />}
+              startIcon={<FilterListIcon />}
               sx={{
                 height: '56px',
                 borderRadius: 2,
