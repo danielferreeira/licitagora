@@ -105,7 +105,6 @@ export default function VisualizarLicitacao() {
   const navigate = useNavigate();
   const [licitacao, setLicitacao] = useState(null);
   const [documentos, setDocumentos] = useState([]);
-  const [requisitos, setRequisitos] = useState([]);
   const [tabValue, setTabValue] = useState(0);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -120,10 +119,9 @@ export default function VisualizarLicitacao() {
     setLoading(true);
     setError(null);
     try {
-      const [licitacaoData, documentosData, requisitosData] = await Promise.all([
+      const [licitacaoData, documentosData] = await Promise.all([
         licitacaoService.buscarLicitacaoPorId(id),
-        documentoService.listarDocumentosLicitacao(id),
-        documentoService.listarRequisitosDocumentacao(id)
+        documentoService.listarDocumentosLicitacao(id)
       ]);
 
       if (!licitacaoData) {
@@ -135,7 +133,6 @@ export default function VisualizarLicitacao() {
 
       setLicitacao(licitacaoData);
       setDocumentos(documentosData || []);
-      setRequisitos(requisitosData || []);
     } catch (error) {
       console.error('Erro ao carregar dados:', error);
       setError('Erro ao carregar dados: ' + (error.message || ''));
@@ -293,7 +290,6 @@ export default function VisualizarLicitacao() {
           <Tabs value={tabValue} onChange={handleChangeTab}>
             <Tab label="Informações Gerais" />
             <Tab label="Documentos" />
-            <Tab label="Requisitos" />
           </Tabs>
         </Box>
 
@@ -422,47 +418,6 @@ export default function VisualizarLicitacao() {
                       </CardContent>
                     </Card>
                   </Grid>
-
-                  {(licitacao.descricao || licitacao.requisitos || licitacao.observacoes) && (
-                    <Grid item xs={12}>
-                      <Card variant="outlined">
-                        <CardContent>
-                          {licitacao.descricao && (
-                            <>
-                              <Typography variant="h6" gutterBottom>
-                                Descrição
-                              </Typography>
-                              <Typography variant="body1" paragraph>
-                                {licitacao.descricao}
-                              </Typography>
-                            </>
-                          )}
-
-                          {licitacao.requisitos && (
-                            <>
-                              <Typography variant="h6" gutterBottom>
-                                Requisitos
-                              </Typography>
-                              <Typography variant="body1" paragraph>
-                                {licitacao.requisitos}
-                              </Typography>
-                            </>
-                          )}
-
-                          {licitacao.observacoes && (
-                            <>
-                              <Typography variant="h6" gutterBottom>
-                                Observações
-                              </Typography>
-                              <Typography variant="body1">
-                                {licitacao.observacoes}
-                              </Typography>
-                            </>
-                          )}
-                        </CardContent>
-                      </Card>
-                    </Grid>
-                  )}
                 </Grid>
               )}
 
@@ -521,66 +476,6 @@ export default function VisualizarLicitacao() {
                               Visualizar
                             </Button>
                           </Box>
-                        </Card>
-                      </Grid>
-                    ))
-                  )}
-                </Grid>
-              )}
-
-              {tabValue === 2 && (
-                <Grid container spacing={2}>
-                  {requisitos.length === 0 ? (
-                    <Grid item xs={12}>
-                      <Box sx={{ 
-                        display: 'flex', 
-                        flexDirection: 'column', 
-                        alignItems: 'center', 
-                        justifyContent: 'center',
-                        p: 4,
-                        bgcolor: 'background.default',
-                        borderRadius: 1
-                      }}>
-                        <Typography variant="body1" color="text.secondary" align="center">
-                          Nenhum requisito encontrado para esta licitação
-                        </Typography>
-                        <Button 
-                          variant="outlined" 
-                          startIcon={<RefreshIcon />} 
-                          onClick={carregarDados}
-                          size="small"
-                          sx={{ mt: 2 }}
-                        >
-                          Atualizar
-                        </Button>
-                      </Box>
-                    </Grid>
-                  ) : (
-                    requisitos.map((requisito) => (
-                      <Grid item xs={12} key={requisito.id}>
-                        <Card 
-                          variant="outlined"
-                          sx={{
-                            bgcolor: requisito.atendido ? 'success.lighter' : 'background.paper'
-                          }}
-                        >
-                          <CardContent>
-                            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
-                              {requisito.atendido ? (
-                                <CheckCircleIcon color="success" />
-                              ) : (
-                                <CancelIcon color="error" />
-                              )}
-                              <Typography variant="h6">
-                                {requisito.descricao}
-                              </Typography>
-                            </Box>
-                            {requisito.observacoes && (
-                              <Typography variant="body2" color="text.secondary">
-                                {requisito.observacoes}
-                              </Typography>
-                            )}
-                          </CardContent>
                         </Card>
                       </Grid>
                     ))

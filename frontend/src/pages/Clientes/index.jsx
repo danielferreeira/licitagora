@@ -186,60 +186,6 @@ export default function Clientes() {
     setAnchorEl(null);
   };
 
-  const exportarClientes = async (formato) => {
-    handleMenuClose();
-    setExportLoading(true);
-    
-    try {
-      // Preparar dados para exportação
-      const dadosExportacao = clientes.map(cliente => ({
-        'Razão Social': cliente.razao_social,
-        'CNPJ': cliente.cnpj,
-        'Email': cliente.email,
-        'Telefone': cliente.telefone,
-        'Endereço': `${cliente.endereco}, ${cliente.numero}`,
-        'Bairro': cliente.bairro,
-        'Cidade': cliente.cidade,
-        'Estado': cliente.estado,
-        'Ramos de Atividade': cliente.ramos_atividade.join(', ')
-      }));
-      
-      if (formato === 'csv') {
-        // Exportar como CSV
-        const headers = Object.keys(dadosExportacao[0]).join(',');
-        const csvData = dadosExportacao.map(row => 
-          Object.values(row).map(value => `"${value}"`).join(',')
-        ).join('\n');
-        
-        const blob = new Blob([`${headers}\n${csvData}`], { type: 'text/csv;charset=utf-8;' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', `clientes_${new Date().toISOString().split('T')[0]}.csv`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      } else if (formato === 'json') {
-        // Exportar como JSON
-        const jsonData = JSON.stringify(dadosExportacao, null, 2);
-        const blob = new Blob([jsonData], { type: 'application/json' });
-        const url = URL.createObjectURL(blob);
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', `clientes_${new Date().toISOString().split('T')[0]}.json`);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-      }
-      
-      toast.success(`Dados exportados com sucesso em formato ${formato.toUpperCase()}`);
-    } catch (error) {
-      console.error('Erro ao exportar dados:', error);
-      toast.error('Erro ao exportar dados: ' + (error.message || 'Tente novamente mais tarde'));
-    } finally {
-      setExportLoading(false);
-    }
-  };
 
   const renderFiltros = () => (
     <Paper 
@@ -504,14 +450,7 @@ export default function Clientes() {
             >
               Filtros
             </Button>
-            <Button
-              variant="outlined"
-              startIcon={<DownloadIcon />}
-              onClick={handleMenuOpen}
-              disabled={loading || clientes.length === 0 || exportLoading}
-            >
-              {exportLoading ? <CircularProgress size={24} /> : 'Exportar'}
-            </Button>
+            
             <Button
               variant="contained"
               startIcon={<AddIcon />}
@@ -527,18 +466,6 @@ export default function Clientes() {
           open={Boolean(anchorEl)}
           onClose={handleMenuClose}
         >
-          <MenuItem onClick={() => exportarClientes('csv')}>
-            <ListItemIcon>
-              <DownloadIcon fontSize="small" />
-            </ListItemIcon>
-            <ListItemText>Exportar como CSV</ListItemText>
-          </MenuItem>
-          <MenuItem onClick={() => exportarClientes('json')}>
-            <ListItemIcon>
-              <DownloadIcon fontSize="small" />
-            </ListItemIcon>
-            <ListItemText>Exportar como JSON</ListItemText>
-          </MenuItem>
         </Menu>
 
         <Collapse in={showFilters}>

@@ -1,9 +1,19 @@
 import { supabase } from '../config/supabase'
 
+// Função para verificar se o usuário está autenticado
+const verificarAutenticacao = async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if (!session) {
+    throw new Error('Usuário não autenticado. Faça login para continuar.');
+  }
+  return session;
+};
+
 // Serviços para Clientes
 export const clienteService = {
     // Criar tabela de clientes (se não existir)
     async criarTabelaClientes() {
+        await verificarAutenticacao();
         const { error } = await supabase.rpc('criar_tabela_clientes');
         if (error) throw error;
     },
@@ -11,6 +21,7 @@ export const clienteService = {
     // Buscar todos os clientes
     async listarClientes() {
         try {
+            await verificarAutenticacao();
             const { data, error } = await supabase
                 .from('clientes')
                 .select('*')
@@ -164,6 +175,7 @@ const formatarValorMonetario = (valor) => {
 export const licitacaoService = {
     // Criar tabela de licitações (se não existir)
     async criarTabelaLicitacoes() {
+        await verificarAutenticacao();
         const { error } = await supabase.rpc('criar_tabela_licitacoes');
         if (error) throw error;
     },
@@ -171,6 +183,7 @@ export const licitacaoService = {
     // Buscar todas as licitações
     async listarLicitacoes(filtros = {}) {
         try {
+            await verificarAutenticacao();
             // Construir a query base
             let query = supabase
                 .from('licitacoes')
@@ -500,6 +513,7 @@ const extractPDFText = async (pdfFile) => {
 export const documentoService = {
   // Tipos de Documentos
   listarTiposDocumentos: async () => {
+    await verificarAutenticacao();
     const { data, error } = await supabase
       .from('tipos_documentos')
       .select('*')
@@ -511,6 +525,7 @@ export const documentoService = {
 
   // Documentos de Cliente
   listarDocumentosCliente: async (clienteId) => {
+    await verificarAutenticacao();
     const { data, error } = await supabase
       .from('documentos_cliente')
       .select(`
@@ -1098,8 +1113,8 @@ export const documentoService = {
     console.log('Criando novo requisito:', requisito);
     
     try {
-      const { data, error } = await supabase
-        .from('requisitos_documentacao')
+    const { data, error } = await supabase
+      .from('requisitos_documentacao')
         .insert([requisito])
         .select();
       
@@ -1126,10 +1141,10 @@ export const documentoService = {
     console.log(`Atualizando requisito ${id}:`, dadosAtualizados);
     
     try {
-      const { data, error } = await supabase
-        .from('requisitos_documentacao')
+    const { data, error } = await supabase
+      .from('requisitos_documentacao')
         .update(dadosAtualizados)
-        .eq('id', id)
+      .eq('id', id)
         .select();
       
       if (error) {
@@ -1155,10 +1170,10 @@ export const documentoService = {
     
     try {
       const { data, error } = await supabase
-        .from('requisitos_documentacao')
-        .delete()
-        .eq('id', id);
-      
+      .from('requisitos_documentacao')
+      .delete()
+      .eq('id', id);
+
       if (error) {
         console.error('Erro ao excluir requisito:', error);
         throw error;
@@ -1188,52 +1203,155 @@ export const documentoService = {
 export const prazoService = {
   // Listar todos os prazos
   async listarPrazos() {
+    try {
+      await verificarAutenticacao();
+      console.log('Iniciando listagem de prazos');
+      
     const { data, error } = await supabase
       .from('prazos')
-      .select('*, licitacoes(*)')
+        .select('*, licitacao:licitacoes!licitacao_id(id, numero, orgao, objeto, status)')
       .order('data_prazo', { ascending: true });
 
-    if (error) throw error;
-    return data;
+      if (error) {
+        console.error('Erro ao listar prazos:', error);
+        throw error;
+      }
+      
+      // Garantir que todos os prazos tenham o campo licitacao_id definido
+      const prazosFormatados = data?.map(prazo => ({
+        ...prazo,
+        licitacao_id: prazo.licitacao_id || prazo.licitacao?.id,
+        licitacao: prazo.licitacao || null
+      })) || [];
+      
+      console.log(`Prazos recuperados: ${prazosFormatados.length}`);
+      
+      return prazosFormatados;
+    } catch (error) {
+      console.error('Erro detalhado ao listar prazos:', error);
+      throw error;
+    }
   },
 
   // Buscar prazo por ID
   async buscarPrazoPorId(id) {
+    try {
+      await verificarAutenticacao();
+      console.log('Buscando prazo por ID:', id);
+      
     const { data, error } = await supabase
       .from('prazos')
-      .select('*, licitacoes(*)')
+        .select('*, licitacao:licitacoes!licitacao_id(id, numero, orgao, objeto, status)')
       .eq('id', id)
       .single();
 
-    if (error) throw error;
-    return data;
+      if (error) {
+        console.error('Erro ao buscar prazo por ID:', error);
+        throw error;
+      }
+      
+      // Garantir que o prazo tenha o campo licitacao_id definido
+      const prazoFormatado = {
+        ...data,
+        licitacao_id: data.licitacao_id || data.licitacao?.id,
+        licitacao: data.licitacao || null
+      };
+      
+      console.log('Prazo encontrado:', prazoFormatado);
+      
+      return prazoFormatado;
+    } catch (error) {
+      console.error('Erro detalhado ao buscar prazo por ID:', error);
+      throw error;
+    }
   },
 
   // Criar novo prazo
   async criarPrazo(prazo) {
+    try {
+      await verificarAutenticacao();
+      // Validar campos obrigatórios
+      if (!prazo.licitacao_id) {
+        throw new Error('O campo licitacao_id é obrigatório');
+      }
+      
+      if (!prazo.titulo) {
+        throw new Error('O título do prazo é obrigatório');
+      }
+      
+      if (!prazo.data_prazo) {
+        throw new Error('A data do prazo é obrigatória');
+      }
+      
+      // Garantir que o campo tipo esteja presente
+      if (!prazo.tipo) {
+        prazo.tipo = 'OUTROS'; // Valor padrão
+      }
+      
+      console.log('Criando prazo com dados:', prazo);
+      
     const { data, error } = await supabase
       .from('prazos')
       .insert([prazo])
       .select();
 
-    if (error) throw error;
+      if (error) {
+        console.error('Erro ao criar prazo:', error);
+        throw error;
+      }
+      
     return data[0];
+    } catch (error) {
+      console.error('Erro detalhado ao criar prazo:', error);
+      throw error;
+    }
   },
 
   // Atualizar prazo
   async atualizarPrazo(id, prazo) {
+    try {
+      await verificarAutenticacao();
+      // Validar campos obrigatórios
+      if (!prazo.licitacao_id) {
+        throw new Error('O campo licitacao_id é obrigatório');
+      }
+      
+      if (!prazo.titulo) {
+        throw new Error('O título do prazo é obrigatório');
+      }
+      
+      if (!prazo.data_prazo) {
+        throw new Error('A data do prazo é obrigatória');
+      }
+      
+      // Garantir que o campo tipo esteja presente
+      if (!prazo.tipo) {
+        prazo.tipo = 'OUTROS'; // Valor padrão
+      }
+      
+      console.log('Atualizando prazo com ID:', id, 'Dados:', prazo);
+      
     const { data, error } = await supabase
       .from('prazos')
       .update(prazo)
       .eq('id', id)
       .select();
 
-    if (error) throw error;
+      if (error) {
+        console.error('Erro ao atualizar prazo:', error);
+        throw error;
+      }
+      
     return data[0];
+    } catch (error) {
+      console.error('Erro detalhado ao atualizar prazo:', error);
+      throw error;
+    }
   },
 
   // Excluir prazo
   async excluirPrazo(id) {
+    await verificarAutenticacao();
     const { error } = await supabase
       .from('prazos')
       .delete()
@@ -1244,6 +1362,7 @@ export const prazoService = {
 
   // Importar prazos das licitações
   async importarPrazos() {
+    await verificarAutenticacao();
     const { data, error } = await supabase
       .rpc('importar_prazos_licitacoes');
 
@@ -1257,6 +1376,7 @@ export const relatorioService = {
   // Gerar relatório de licitações
   async gerarRelatorioLicitacoes(filtros = {}) {
     try {
+      await verificarAutenticacao();
       console.log('Gerando relatório de licitações com filtros:', filtros);
       
       // Chamar a função SQL com tratamento de erros mais robusto
@@ -1342,6 +1462,7 @@ export const relatorioService = {
   // Gerar relatório de clientes
   async gerarRelatorioClientes(filtros = {}) {
     try {
+      await verificarAutenticacao();
       console.log('Gerando relatório de clientes com filtros:', filtros);
       
       // Chamar a função SQL com tratamento de erros mais robusto
@@ -1412,6 +1533,7 @@ export const relatorioService = {
   // Gerar relatório de desempenho
   async gerarRelatorioDesempenho(filtros = {}) {
     try {
+      await verificarAutenticacao();
       console.log('Gerando relatório de desempenho com filtros:', filtros);
       
       // Chamar a função SQL com tratamento de erros mais robusto
@@ -1485,5 +1607,54 @@ export const relatorioService = {
         evolucao_mensal: []
       };
     }
+  }
+};
+
+// Serviço de autenticação
+export const authService = {
+  // Obter usuário atual
+  getCurrentUser: async () => {
+    const { data: { user } } = await supabase.auth.getUser();
+    return user;
+  },
+
+  // Obter sessão atual
+  getSession: async () => {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) throw error;
+    return data.session;
+  },
+
+  // Login com email e senha
+  signInWithEmail: async (email, password) => {
+    const { data, error } = await supabase.auth.signInWithPassword({
+      email,
+      password
+    });
+    
+    if (error) throw error;
+    return data;
+  },
+
+  // Logout
+  signOut: async () => {
+    const { error } = await supabase.auth.signOut();
+    if (error) throw error;
+  },
+
+  // Atualizar senha do usuário
+  updatePassword: async (password) => {
+    const { data, error } = await supabase.auth.updateUser({
+      password
+    });
+    
+    if (error) throw error;
+    return data;
+  },
+
+  // Verificar se o usuário está autenticado
+  isAuthenticated: async () => {
+    const { data: { session } } = await supabase.auth.getSession();
+    return !!session;
   }
 }; 

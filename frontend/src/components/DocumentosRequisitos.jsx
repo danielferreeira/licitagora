@@ -1,12 +1,12 @@
 import React, { useState, useEffect } from 'react';
-import { 
-  Box, 
-  Typography, 
+import {
+  Box,
+  Typography,
   CircularProgress, 
-  Button, 
-  List, 
-  ListItem, 
-  ListItemText, 
+  Button,
+  List,
+  ListItem,
+  ListItemText,
   Divider, 
   Alert,
   IconButton,
@@ -91,7 +91,7 @@ const DocumentosRequisitos = ({ licitacaoId, licitacaoStatus }) => {
         if (Array.isArray(data) && data.length > 0) {
           setRequisitos(data);
           setError(null);
-        } else {
+    } else {
           console.log('Nenhum requisito encontrado para esta licitação');
           setError('Nenhum requisito encontrado para esta licitação');
           setRequisitos([]);
@@ -269,20 +269,20 @@ const DocumentosRequisitos = ({ licitacaoId, licitacaoStatus }) => {
     <Box sx={{ mt: 2, p: 1, bgcolor: '#f5f5f5', borderRadius: 1, fontSize: '0.75rem' }}>
       <Typography variant="caption" component="div" sx={{ fontWeight: 'bold' }}>
         Informações de Depuração:
-      </Typography>
+        </Typography>
       <div>ID da Licitação: {licitacaoId || 'Não selecionado'}</div>
       <div>Status: {licitacaoStatus || 'Não definido'}</div>
       <div>Tentativas de carregamento: {tentativas}</div>
       <div>Requisitos carregados: {requisitos.length}</div>
-    </Box>
-  );
+      </Box>
+    );
 
   return (
     <Box sx={{ p: 2, width: '100%' }}>
-      <Box sx={{ 
-        display: 'flex', 
-        justifyContent: 'space-between', 
-        alignItems: 'center', 
+          <Box sx={{ 
+            display: 'flex', 
+            justifyContent: 'space-between', 
+            alignItems: 'center',
         mb: 2,
         borderBottom: '1px solid',
         borderColor: 'divider',
@@ -291,45 +291,45 @@ const DocumentosRequisitos = ({ licitacaoId, licitacaoStatus }) => {
         <Typography variant="h6" sx={{ fontWeight: 600, color: 'primary.main' }}>
           Requisitos da Documentação
           {isLicitacaoConcluida && (
-            <Typography 
+                <Typography 
               component="span" 
-              variant="caption" 
-              sx={{ 
+                  variant="caption" 
+                  sx={{ 
                 ml: 2, 
                 bgcolor: 'info.light', 
                 color: 'info.contrastText', 
-                px: 1, 
-                py: 0.5, 
-                borderRadius: 1,
+                    px: 1, 
+                    py: 0.5, 
+                    borderRadius: 1,
                 fontWeight: 'medium'
-              }}
-            >
+                  }}
+                >
               Licitação Concluída - Somente Visualização
-            </Typography>
-          )}
+                </Typography>
+              )}
         </Typography>
         <Box>
-          <Button 
+              <Button
             startIcon={<AddIcon />}
             onClick={() => setOpenAddDialog(true)}
-            variant="contained"
+                variant="contained"
             color="primary"
             size="small"
             sx={{ mr: 1, borderRadius: 2 }}
             disabled={isLicitacaoConcluida}
           >
             Adicionar
-          </Button>
-          <Button 
+              </Button>
+                <Button 
             startIcon={<RefreshIcon />} 
             onClick={handleRefresh} 
             disabled={loading}
             variant="outlined"
-            size="small"
+                  size="small" 
             sx={{ borderRadius: 2 }}
-          >
-            Atualizar
-          </Button>
+                >
+                  Atualizar
+                </Button>
         </Box>
       </Box>
       
@@ -361,7 +361,7 @@ const DocumentosRequisitos = ({ licitacaoId, licitacaoStatus }) => {
                 secondaryAction={
                   <Box 
                     className="requisito-actions" 
-                    sx={{ 
+                    sx={{
                       opacity: { xs: 1, sm: 0.2 }, 
                       transition: 'opacity 0.2s',
                       position: 'absolute',
@@ -466,8 +466,8 @@ const DocumentosRequisitos = ({ licitacaoId, licitacaoStatus }) => {
                         }}
                       >
                         {requisito.observacoes || requisito.observacao}
-                      </Typography>
-                    )}
+                        </Typography>
+                      )}
                     
                     <Typography 
                       component="div" 
@@ -504,7 +504,7 @@ const DocumentosRequisitos = ({ licitacaoId, licitacaoStatus }) => {
       <Dialog 
         open={openAddDialog} 
         onClose={handleCloseDialogs} 
-        maxWidth="sm" 
+        maxWidth="sm"
         fullWidth
         PaperProps={{
           sx: { borderRadius: 2 }
@@ -639,11 +639,11 @@ const DocumentosRequisitos = ({ licitacaoId, licitacaoStatus }) => {
             />
             <FormControlLabel
               control={
-                <Checkbox
+              <Checkbox
                   checked={formData.atendido}
                   onChange={(e) => setFormData({ ...formData, atendido: e.target.checked })}
-                  color="success"
-                />
+                color="success"
+              />
               }
               label={
                 <Typography 
@@ -669,7 +669,7 @@ const DocumentosRequisitos = ({ licitacaoId, licitacaoStatus }) => {
           </Button>
           <Button 
             onClick={handleEditRequisito} 
-            variant="contained" 
+            variant="contained"
             color="primary"
             sx={{ borderRadius: 2 }}
           >

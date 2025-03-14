@@ -24,6 +24,7 @@ import {
   Tooltip,
   Skeleton,
   DialogContentText,
+  FormHelperText,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -76,6 +77,7 @@ export default function Prazos() {
     data_prazo: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
     observacoes: '',
     licitacao_id: '',
+    tipo: 'OUTROS',
   });
   const [view, setView] = useState('month');
   const [date, setDate] = useState(new Date());
@@ -84,6 +86,19 @@ export default function Prazos() {
   const [confirmDelete, setConfirmDelete] = useState(false);
   const [selectedEvent, setSelectedEvent] = useState(null);
   const [eventDetailsOpen, setEventDetailsOpen] = useState(false);
+
+  // Tipos de prazo disponíveis
+  const tiposPrazo = [
+    'ABERTURA',
+    'VISITA_TECNICA',
+    'IMPUGNACAO',
+    'ESCLARECIMENTO',
+    'RECURSO',
+    'CONTRARRAZAO',
+    'ASSINATURA_CONTRATO',
+    'ENTREGA_DOCUMENTOS',
+    'OUTROS'
+  ];
 
   useEffect(() => {
     carregarDados();
@@ -98,6 +113,9 @@ export default function Prazos() {
         prazoService.listarPrazos(),
         licitacaoService.listarLicitacoes()
       ]);
+
+      console.log('Licitações carregadas:', licitacoesData?.length || 0);
+      console.log('Prazos carregados:', prazosData?.length || 0);
 
       // Atualizar lista de licitações
       setLicitacoes(licitacoesData || []);
@@ -118,6 +136,22 @@ export default function Prazos() {
               return null;
             }
 
+            // Verificar se a licitação está presente
+            if (!prazo.licitacao_id && !prazo.licitacao) {
+              console.error('Prazo sem licitação associada:', prazo);
+            }
+
+            // Usar o ID da licitação diretamente do prazo ou da relação licitacao
+            const licitacaoId = prazo.licitacao_id || prazo.licitacao?.id;
+            
+            // Verificar se a licitação existe na lista de licitações
+            if (licitacaoId) {
+              const licitacaoExiste = licitacoesData.some(lic => lic.id === licitacaoId);
+              if (!licitacaoExiste) {
+                console.warn('Licitação não encontrada na lista de licitações:', licitacaoId);
+              }
+            }
+
             // Criar evento para o calendário
             return {
               id: prazo.id,
@@ -129,13 +163,14 @@ export default function Prazos() {
               allDay: true,
               resource: {
                 titulo: prazo.titulo,
-                licitacao_id: prazo.licitacao?.id,
+                licitacao_id: licitacaoId,
                 licitacao_numero: prazo.licitacao?.numero,
                 licitacao_orgao: prazo.licitacao?.orgao,
                 licitacao_objeto: prazo.licitacao?.objeto,
                 licitacao_status: prazo.licitacao?.status,
                 observacoes: prazo.observacoes,
-                data_prazo: prazo.data_prazo
+                data_prazo: prazo.data_prazo,
+                tipo: prazo.tipo
               }
             };
           } catch (err) {
@@ -148,6 +183,7 @@ export default function Prazos() {
         })
         .filter(Boolean); // Remover eventos nulos
 
+      console.log('Eventos processados:', eventos.length);
       setEventos(eventos);
       setDate(new Date());
     } catch (error) {
@@ -173,6 +209,7 @@ export default function Prazos() {
       data_prazo: format(new Date(), "yyyy-MM-dd'T'HH:mm"),
       observacoes: '',
       licitacao_id: '',
+      tipo: 'OUTROS',
     });
     setOpenDialog(true);
   };
@@ -187,6 +224,7 @@ export default function Prazos() {
       data_prazo: format(start, "yyyy-MM-dd'T'HH:mm"),
       observacoes: '',
       licitacao_id: '',
+      tipo: 'OUTROS',
     });
     setOpenDialog(true);
   };
@@ -203,25 +241,71 @@ export default function Prazos() {
     
     const dataFormatada = format(new Date(selectedEvent.start), "yyyy-MM-dd'T'HH:mm");
     
-    setNovoEvento({
-      id: selectedEvent.id,
-      titulo: selectedEvent.resource.titulo || '',
-      data_prazo: dataFormatada,
-      observacoes: selectedEvent.resource.observacoes || '',
-      licitacao_id: selectedEvent.resource.licitacao_id || '',
-    });
+    // Verificar se a licitação_id existe e é válida
+    const licitacaoId = selectedEvent.resource.licitacao_id;
+    console.log('Editando evento com licitacao_id:', licitacaoId);
     
-    setOpenDialog(true);
+    // Verificar se a licitação existe na lista de licitações
+    const licitacaoExiste = licitacoes.some(lic => lic.id === licitacaoId);
+    if (!licitacaoExiste && licitacaoId) {
+      console.warn('Licitação não encontrada na lista de licitações:', licitacaoId);
+    }
+    
+    // Carregar o prazo diretamente do banco de dados para garantir que todos os dados estejam corretos
+    carregarPrazo(selectedEvent.id);
+  };
+
+  // Função para carregar um prazo específico
+  const carregarPrazo = async (prazoId) => {
+    try {
+      setLoading(true);
+      console.log('Carregando prazo:', prazoId);
+      
+      const prazo = await prazoService.buscarPrazoPorId(prazoId);
+      console.log('Prazo carregado:', prazo);
+      
+      if (prazo) {
+        const dataFormatada = format(new Date(prazo.data_prazo), "yyyy-MM-dd'T'HH:mm");
+        
+        setNovoEvento({
+          id: prazo.id,
+          titulo: prazo.titulo || '',
+          data_prazo: dataFormatada,
+          observacoes: prazo.observacoes || '',
+          licitacao_id: prazo.licitacao_id || '',
+          tipo: prazo.tipo || 'OUTROS',
+        });
+        
+        setOpenDialog(true);
+      } else {
+        toast.error('Não foi possível carregar o prazo');
+      }
+    } catch (error) {
+      console.error('Erro ao carregar prazo:', error);
+      toast.error('Erro ao carregar prazo: ' + (error.message || ''));
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleSalvarEvento = async () => {
     try {
+      // Validar se uma licitação foi selecionada
+      if (!novoEvento.licitacao_id) {
+        setError('É necessário selecionar uma licitação');
+        toast.error('É necessário selecionar uma licitação');
+        return;
+      }
+      
       const dadosPrazo = {
         titulo: novoEvento.titulo,
         data_prazo: new Date(novoEvento.data_prazo).toISOString(),
         observacoes: novoEvento.observacoes,
-        licitacao_id: novoEvento.licitacao_id || null
+        licitacao_id: novoEvento.licitacao_id, // Garantir que não seja nulo
+        tipo: novoEvento.tipo
       };
+      
+      console.log('Salvando prazo com dados:', dadosPrazo);
       
       if (novoEvento.id) {
         // Atualizar prazo existente
@@ -341,6 +425,32 @@ export default function Prazos() {
     }
   };
 
+  // Função para obter o nome amigável do tipo de prazo
+  const getTipoDisplay = (tipo) => {
+    switch (tipo) {
+      case 'ABERTURA':
+        return 'Abertura';
+      case 'VISITA_TECNICA':
+        return 'Visita Técnica';
+      case 'IMPUGNACAO':
+        return 'Impugnação';
+      case 'ESCLARECIMENTO':
+        return 'Esclarecimento';
+      case 'RECURSO':
+        return 'Recurso';
+      case 'CONTRARRAZAO':
+        return 'Contrarrazão';
+      case 'ASSINATURA_CONTRATO':
+        return 'Assinatura de Contrato';
+      case 'ENTREGA_DOCUMENTOS':
+        return 'Entrega de Documentos';
+      case 'OUTROS':
+        return 'Outros';
+      default:
+        return tipo;
+    }
+  };
+
   return (
     <Box sx={{ p: 3 }}>
       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', mb: 3 }}>
@@ -427,6 +537,12 @@ export default function Prazos() {
                   <strong>Data:</strong> {format(new Date(selectedEvent.start), 'dd/MM/yyyy HH:mm', { locale: ptBR })}
                 </Typography>
                 
+                {selectedEvent.resource.tipo && (
+                  <Typography variant="body1">
+                    <strong>Tipo:</strong> {getTipoDisplay(selectedEvent.resource.tipo)}
+                  </Typography>
+                )}
+                
                 {selectedEvent.resource.licitacao_orgao && (
                   <Typography variant="body1">
                     <strong>Órgão:</strong> {selectedEvent.resource.licitacao_orgao}
@@ -471,25 +587,57 @@ export default function Prazos() {
       </Dialog>
 
       {/* Dialog de novo/editar evento */}
-      <Dialog open={openDialog} onClose={handleFecharDialog} maxWidth="sm" fullWidth>
+      <Dialog 
+        open={openDialog} 
+        onClose={handleFecharDialog} 
+        maxWidth="sm" 
+        fullWidth
+        TransitionProps={{
+          onEnter: () => {
+            console.log('Abrindo diálogo com licitacao_id:', novoEvento.licitacao_id);
+            console.log('Licitações disponíveis:', licitacoes.length);
+          }
+        }}
+      >
         <DialogTitle>
           {novoEvento.id ? 'Editar Prazo' : 'Novo Prazo'}
         </DialogTitle>
         <DialogContent>
           <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
-            <FormControl fullWidth>
+            <FormControl fullWidth required error={!novoEvento.licitacao_id}>
               <InputLabel>Licitação</InputLabel>
               <Select
                 value={novoEvento.licitacao_id || ''}
-                onChange={(e) => setNovoEvento({ ...novoEvento, licitacao_id: e.target.value })}
+                onChange={(e) => {
+                  console.log('Licitação selecionada:', e.target.value);
+                  setNovoEvento({ ...novoEvento, licitacao_id: e.target.value });
+                }}
                 label="Licitação"
               >
                 <MenuItem value="">
-                  <em>Nenhuma</em>
+                  <em>Selecione uma licitação</em>
                 </MenuItem>
                 {licitacoes.map((licitacao) => (
                   <MenuItem key={licitacao.id} value={licitacao.id}>
                     {licitacao.numero} - {licitacao.orgao}
+                  </MenuItem>
+                ))}
+              </Select>
+              {!novoEvento.licitacao_id && (
+                <FormHelperText>É necessário selecionar uma licitação</FormHelperText>
+              )}
+            </FormControl>
+
+            <FormControl fullWidth required>
+              <InputLabel>Tipo de Prazo</InputLabel>
+              <Select
+                value={novoEvento.tipo}
+                onChange={(e) => setNovoEvento({ ...novoEvento, tipo: e.target.value })}
+                label="Tipo de Prazo"
+              >
+                {tiposPrazo.map((tipo) => (
+                  <MenuItem key={tipo} value={tipo}>
+                    {getTipoDisplay(tipo)}
                   </MenuItem>
                 ))}
               </Select>
@@ -543,7 +691,7 @@ export default function Prazos() {
           <Button
             onClick={handleSalvarEvento}
             variant="contained"
-            disabled={!novoEvento.data_prazo || (!novoEvento.titulo && !novoEvento.licitacao_id)}
+            disabled={!novoEvento.data_prazo || !novoEvento.licitacao_id || !novoEvento.titulo}
           >
             {novoEvento.id ? 'Atualizar' : 'Adicionar'}
           </Button>

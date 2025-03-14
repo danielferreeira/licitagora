@@ -13,6 +13,7 @@ import {
   ListItemText,
   useTheme,
   useMediaQuery,
+  Tooltip,
 } from '@mui/material';
 import {
   Menu as MenuIcon,
@@ -25,13 +26,17 @@ import {
   Assessment as AssessmentIcon,
   AssignmentTurnedIn as AssignmentTurnedInIcon,
   AccountBalance as AccountBalanceIcon,
+  Logout as LogoutIcon,
 } from '@mui/icons-material';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation, Outlet } from 'react-router-dom';
+import { authService } from '../../services/supabase';
+import { toast } from 'react-toastify';
 
 const drawerWidth = 280;
 
-export default function Layout({ children }) {
+export default function Layout() {
   const [open, setOpen] = useState(true);
+  const [user, setUser] = useState(null);
   const theme = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
@@ -43,8 +48,21 @@ export default function Layout({ children }) {
     }
   }, [isMobile]);
 
+  useEffect(() => {
+    const fetchUser = async () => {
+      try {
+        const currentUser = await authService.getCurrentUser();
+        setUser(currentUser);
+      } catch (error) {
+        console.error('Erro ao buscar usuário:', error);
+      }
+    };
+
+    fetchUser();
+  }, []);
+
   const menuItems = [
-    { text: 'Home', icon: <HomeIcon />, path: '/' },
+    { text: 'Dashboard', icon: <HomeIcon />, path: '/home' },
     { text: 'Clientes', icon: <BusinessIcon />, path: '/clientes' },
     { text: 'Licitações', icon: <GavelIcon />, path: '/licitacoes' },
     { text: 'Documentos', icon: <DescriptionIcon />, path: '/documentos' },
@@ -56,6 +74,17 @@ export default function Layout({ children }) {
 
   const handleDrawerToggle = () => {
     setOpen(!open);
+  };
+
+  const handleLogout = async () => {
+    try {
+      await authService.signOut();
+      toast.success('Logout realizado com sucesso!');
+      navigate('/login');
+    } catch (error) {
+      console.error('Erro ao fazer logout:', error);
+      toast.error('Falha ao fazer logout.');
+    }
   };
 
   return (
@@ -117,6 +146,9 @@ export default function Layout({ children }) {
             overflow: 'hidden auto',
             height: '100%',
             padding: theme.spacing(2),
+            display: 'flex',
+            flexDirection: 'column',
+            justifyContent: 'space-between',
           }}
         >
           <List>
@@ -166,7 +198,43 @@ export default function Layout({ children }) {
               </ListItem>
             ))}
           </List>
-          <Divider sx={{ my: 2 }} />
+          
+          <Box>
+            <Divider sx={{ my: 2 }} />
+            {user && (
+              <Box sx={{ px: 2, py: 1, mb: 2 }}>
+                <Typography variant="body2" color="text.secondary" sx={{ mb: 0.5 }}>
+                  Logado como:
+                </Typography>
+                <Typography variant="body1" fontWeight={500} noWrap>
+                  {user.email}
+                </Typography>
+              </Box>
+            )}
+            <Tooltip title="Sair do sistema">
+              <ListItem
+                button
+                onClick={handleLogout}
+                sx={{
+                  borderRadius: 2,
+                  mb: 1,
+                  transition: 'all 0.2s ease-in-out',
+                  '&:hover': {
+                    backgroundColor: 'error.light',
+                    color: 'error.contrastText',
+                    '& .MuiListItemIcon-root': {
+                      color: 'error.contrastText',
+                    },
+                  },
+                }}
+              >
+                <ListItemIcon sx={{ minWidth: 40 }}>
+                  <LogoutIcon />
+                </ListItemIcon>
+                <ListItemText primary="Sair" />
+              </ListItem>
+            </Tooltip>
+          </Box>
         </Box>
       </Drawer>
 
@@ -184,7 +252,7 @@ export default function Layout({ children }) {
           py: { xs: 2, sm: 3 },
         }}
       >
-        {children}
+        <Outlet />
       </Box>
     </Box>
   );

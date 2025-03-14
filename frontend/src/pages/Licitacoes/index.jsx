@@ -153,7 +153,7 @@ export default function Licitacoes() {
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
   const navigate = useNavigate();
   
-  const [showFilters, setShowFilters] = useState(!isMobile);
+  const [showFilters, setShowFilters] = useState(false);
   const [filtros, setFiltros] = useState({
     cliente_id: '',
     modalidade: '',

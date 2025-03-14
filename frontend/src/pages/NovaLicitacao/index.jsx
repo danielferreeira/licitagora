@@ -84,6 +84,9 @@ export default function NovaLicitacao() {
   });
 
   useEffect(() => {
+    // Log para depuração
+    console.log('NovaLicitacao - ID recebido:', id);
+    
     carregarClientes();
     if (id) {
       carregarLicitacao();
@@ -119,8 +122,14 @@ export default function NovaLicitacao() {
     setLoading(true);
     setError(null);
     try {
+      console.log('Carregando licitação com ID:', id);
+      
       const data = await licitacaoService.buscarLicitacaoPorId(id);
+      
+      console.log('Dados da licitação recebidos:', data);
+      
       if (!data) {
+        console.error('Licitação não encontrada para o ID:', id);
         setError('Licitação não encontrada');
         toast.error('Licitação não encontrada');
         navigate('/licitacoes');
@@ -155,6 +164,8 @@ export default function NovaLicitacao() {
         dataFim = dataAbertura.add(1, 'day');
         setDataErrors({ data_abertura: true, data_fim: true });
       }
+      
+      console.log('Definindo estado da licitação com dados carregados');
       
       setLicitacao({
         ...data,
@@ -276,6 +287,8 @@ export default function NovaLicitacao() {
     setError(null);
     
     try {
+      console.log('Submetendo formulário de licitação. ID:', id);
+      
       // Validações das datas
       if (!licitacao.data_abertura || !dayjs.isDayjs(licitacao.data_abertura)) {
         setDataErrors(prev => ({ ...prev, data_abertura: true }));
@@ -308,19 +321,24 @@ export default function NovaLicitacao() {
         data_fim: licitacao.data_fim,
         valor_estimado: licitacao.valor_estimado,
         lucro_estimado: licitacao.lucro_estimado,
-        status: 'EM_ANDAMENTO',
+        status: licitacao.status || 'EM_ANDAMENTO',
         ramos_atividade: licitacao.ramos_atividade,
         descricao: licitacao.descricao || null,
         requisitos: licitacao.requisitos || null,
         observacoes: licitacao.observacoes || null
       };
 
+      console.log('Dados da licitação preparados para envio:', dadosLicitacao);
+      console.log('ID para atualização:', id);
+
       if (id) {
         // Atualiza licitação existente
+        console.log('Atualizando licitação existente com ID:', id);
         await licitacaoService.atualizarLicitacao(id, dadosLicitacao);
         toast.success('Licitação atualizada com sucesso!');
       } else {
         // Cria nova licitação
+        console.log('Criando nova licitação');
         await licitacaoService.criarLicitacao(dadosLicitacao);
         toast.success('Licitação criada com sucesso!');
       }
