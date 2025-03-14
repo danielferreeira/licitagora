@@ -160,7 +160,7 @@ const Login = () => {
                   textAlign: 'center'
                 }}
               >
-                LicitÁgora
+                Licitagora
               </Typography>
               <Typography
                 variant="subtitle1"
