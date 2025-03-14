@@ -27,6 +27,7 @@ import {
   useTheme,
   useMediaQuery,
   Tooltip,
+  Alert,
 } from '@mui/material';
 import {
   Add as AddIcon,
@@ -329,7 +330,12 @@ export default function Documentos() {
       const licitacaoId = tabValue === 1 ? licitacaoEmAndamentoSelecionada : 
                          tabValue === 2 ? licitacaoConcluidaSelecionada : null;
       
-      await documentoService.uploadDocumentoLicitacao({
+      // Verificar se é um edital
+      const tipoDocumento = tiposDocumentos.find(tipo => tipo.id === uploadData.tipo_documento_id);
+      const isEdital = tipoDocumento?.nome.toLowerCase().includes('edital');
+      
+      // Fazer upload do documento
+      const documento = await documentoService.uploadDocumentoLicitacao({
         arquivo: uploadData.arquivo,
         licitacaoId: licitacaoId,
         tipoDocumentoId: uploadData.tipo_documento_id,
@@ -338,18 +344,65 @@ export default function Documentos() {
         nome: uploadData.nome
       });
 
-      toast.success('Documento enviado com sucesso!');
+      // Fechar o diálogo e limpar os dados
       setOpenUploadLicitacao(false);
       limparUploadData();
       
-      // Recarregar documentos e requisitos
+      // Mensagem de sucesso
+      toast.success('Documento enviado com sucesso!');
+      
+      // Recarregar documentos
       if (licitacaoId) {
         await carregarDocumentosLicitacao(licitacaoId);
       }
       
-      // Mudar para a aba de requisitos após o upload do edital
-      if (uploadData.tipo_documento_id === 'EDITAL') {
-        setDocumentosTabValue(1);
+      // Se for um edital, verificar se requisitos foram extraídos
+      if (isEdital) {
+        if (documento.requisitos_extraidos?.sucesso) {
+          const quantidade = documento.requisitos_extraidos.quantidade;
+          if (quantidade > 0) {
+            toast.success(`${quantidade} requisitos extraídos com sucesso!`);
+          } else {
+            toast.info('Nenhum requisito específico foi encontrado no edital. Requisitos padrão foram criados.');
+          }
+          
+          // Mudar para a aba de requisitos após um breve delay
+          setTimeout(() => {
+            // Mudar para a aba de requisitos
+            setDocumentosTabValue(1);
+            
+            // Forçar uma atualização do componente DocumentosRequisitos
+            if (tabValue === 1) {
+              // Para licitações em andamento
+              const currentId = licitacaoEmAndamentoSelecionada;
+              setLicitacaoEmAndamentoSelecionada(null);
+              
+              // Pequeno delay para garantir que o estado seja atualizado
+              setTimeout(() => {
+                setLicitacaoEmAndamentoSelecionada(currentId);
+                
+                // Adicionar um timestamp ao key do componente para forçar remontagem
+                const timestamp = Date.now();
+                document.getElementById('requisitos-container-andamento')?.setAttribute('key', `andamento-${currentId}-${timestamp}`);
+              }, 50);
+            } else if (tabValue === 2) {
+              // Para licitações concluídas
+              const currentId = licitacaoConcluidaSelecionada;
+              setLicitacaoConcluidaSelecionada(null);
+              
+              // Pequeno delay para garantir que o estado seja atualizado
+              setTimeout(() => {
+                setLicitacaoConcluidaSelecionada(currentId);
+                
+                // Adicionar um timestamp ao key do componente para forçar remontagem
+                const timestamp = Date.now();
+                document.getElementById('requisitos-container-concluida')?.setAttribute('key', `concluida-${currentId}-${timestamp}`);
+              }, 50);
+            }
+          }, 500);
+        } else if (documento.requisitos_extraidos?.erro) {
+          toast.error(`Erro ao extrair requisitos: ${documento.requisitos_extraidos.erro}`);
+        }
       }
     } catch (error) {
       console.error('Erro ao enviar documento:', error);
@@ -432,24 +485,53 @@ export default function Documentos() {
 
   const handleDocumentosTabChange = (event, newValue) => {
     console.log('Mudando para a aba de documentos:', newValue);
-    setDocumentosTabValue(newValue);
     
-    // Limpar documentos ao trocar entre documentos e requisitos
-    if (newValue === 0) {
-      // Se estiver voltando para a aba de documentos, recarregar os documentos
-      // Usar o estado correto com base na aba atual
-      const licitacaoId = tabValue === 1 ? licitacaoEmAndamentoSelecionada : 
-                         tabValue === 2 ? licitacaoConcluidaSelecionada : null;
+    // Identificar a licitação selecionada atual
+    const licitacaoId = tabValue === 1 ? licitacaoEmAndamentoSelecionada : 
+                       tabValue === 2 ? licitacaoConcluidaSelecionada : null;
+    
+    console.log('Licitação atual ao mudar aba:', licitacaoId);
+    
+    if (newValue === 0 && licitacaoId) {
+      // Se estiver indo para a aba de documentos, recarregar os documentos
+      console.log('Recarregando documentos para licitação:', licitacaoId);
+      carregarDocumentosLicitacao(licitacaoId);
+    } else if (newValue === 1 && licitacaoId) {
+      // Se estiver indo para a aba de requisitos, forçar uma atualização do componente
+      console.log('Mudando para a aba de requisitos para licitação:', licitacaoId);
       
-      if (licitacaoId) {
-        console.log('Recarregando documentos para licitação:', licitacaoId);
-        carregarDocumentosLicitacao(licitacaoId);
+      // Forçar uma atualização do componente DocumentosRequisitos
+      if (tabValue === 1) {
+        // Para licitações em andamento
+        const currentId = licitacaoEmAndamentoSelecionada;
+        setLicitacaoEmAndamentoSelecionada(null);
+        
+        // Pequeno delay para garantir que o estado seja atualizado
+        setTimeout(() => {
+          setLicitacaoEmAndamentoSelecionada(currentId);
+          
+          // Adicionar um timestamp ao key do componente para forçar remontagem
+          const timestamp = Date.now();
+          document.getElementById('requisitos-container-andamento')?.setAttribute('key', `andamento-${currentId}-${timestamp}`);
+        }, 50);
+      } else if (tabValue === 2) {
+        // Para licitações concluídas
+        const currentId = licitacaoConcluidaSelecionada;
+        setLicitacaoConcluidaSelecionada(null);
+        
+        // Pequeno delay para garantir que o estado seja atualizado
+        setTimeout(() => {
+          setLicitacaoConcluidaSelecionada(currentId);
+          
+          // Adicionar um timestamp ao key do componente para forçar remontagem
+          const timestamp = Date.now();
+          document.getElementById('requisitos-container-concluida')?.setAttribute('key', `concluida-${currentId}-${timestamp}`);
+        }, 50);
       }
-    } else if (newValue === 1) {
-      // Forçar uma nova renderização do componente DocumentosRequisitos
-      console.log('Forçando nova renderização do componente DocumentosRequisitos');
-      // Não é necessário fazer nada aqui, pois a chave única já força a recriação
     }
+    
+    // Atualizar o valor da aba
+    setDocumentosTabValue(newValue);
   };
 
   const handleLicitacaoClick = (licitacaoId) => {
@@ -909,11 +991,18 @@ export default function Documentos() {
                       {documentosTabValue === 1 && (
                         <Box sx={{ position: 'relative', width: '100%', minHeight: '400px' }}>
                           {licitacaoEmAndamentoSelecionada && (
-                            <DocumentosRequisitos 
-                              licitacaoId={licitacaoEmAndamentoSelecionada} 
-                              licitacaoStatus={licitacoes.find(l => l.id === licitacaoEmAndamentoSelecionada)?.status || 'EM_ANDAMENTO'}
-                              key={`andamento-${licitacaoEmAndamentoSelecionada}-tab-${tabValue}-${documentosTabValue}-${Date.now()}`}
-                            />
+                            <Box id="requisitos-container-andamento">
+                              <DocumentosRequisitos 
+                                licitacaoId={licitacaoEmAndamentoSelecionada} 
+                                licitacaoStatus={licitacoes.find(l => l.id === licitacaoEmAndamentoSelecionada)?.status || 'EM_ANDAMENTO'}
+                                key={`andamento-${licitacaoEmAndamentoSelecionada}-${Date.now()}`}
+                              />
+                            </Box>
+                          )}
+                          {!licitacaoEmAndamentoSelecionada && (
+                            <Alert severity="info" sx={{ m: 2 }}>
+                              Selecione uma licitação para visualizar os requisitos.
+                            </Alert>
                           )}
                         </Box>
                       )}
@@ -1131,11 +1220,18 @@ export default function Documentos() {
                       {documentosTabValue === 1 && (
                         <Box sx={{ position: 'relative', width: '100%', minHeight: '400px' }}>
                           {licitacaoConcluidaSelecionada && (
-                            <DocumentosRequisitos 
-                              licitacaoId={licitacaoConcluidaSelecionada} 
-                              licitacaoStatus="CONCLUIDA"
-                              key={`concluida-${licitacaoConcluidaSelecionada}-tab-${tabValue}-${documentosTabValue}-${Date.now()}`}
-                            />
+                            <Box id="requisitos-container-concluida">
+                              <DocumentosRequisitos 
+                                licitacaoId={licitacaoConcluidaSelecionada} 
+                                licitacaoStatus="CONCLUIDA"
+                                key={`concluida-${licitacaoConcluidaSelecionada}-${Date.now()}`}
+                              />
+                            </Box>
+                          )}
+                          {!licitacaoConcluidaSelecionada && (
+                            <Alert severity="info" sx={{ m: 2 }}>
+                              Selecione uma licitação para visualizar os requisitos.
+                            </Alert>
                           )}
                         </Box>
                       )}

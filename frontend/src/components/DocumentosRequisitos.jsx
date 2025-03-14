@@ -1,531 +1,732 @@
-import { useState, useEffect } from 'react';
-import {
-  Box,
-  Typography,
-  Button,
-  Card,
-  CardContent,
+import React, { useState, useEffect } from 'react';
+import { 
+  Box, 
+  Typography, 
+  CircularProgress, 
+  Button, 
+  List, 
+  ListItem, 
+  ListItemText, 
+  Divider, 
+  Alert,
   IconButton,
-  List,
-  ListItem,
-  ListItemText,
-  Checkbox,
   Dialog,
   DialogTitle,
   DialogContent,
   DialogActions,
   TextField,
-  useTheme,
-  CircularProgress,
+  FormControlLabel,
+  Checkbox,
+  Tooltip
 } from '@mui/material';
-import {
-  Add as AddIcon,
-  Delete as DeleteIcon,
-  Edit as EditIcon,
-} from '@mui/icons-material';
-import { toast } from 'react-toastify';
+import RefreshIcon from '@mui/icons-material/Refresh';
+import AddIcon from '@mui/icons-material/Add';
+import EditIcon from '@mui/icons-material/Edit';
+import DeleteIcon from '@mui/icons-material/Delete';
 import { documentoService } from '../services/supabase';
+import { toast } from 'react-toastify';
 
 const DocumentosRequisitos = ({ licitacaoId, licitacaoStatus }) => {
-  console.log('DocumentosRequisitos renderizado com:', { licitacaoId, licitacaoStatus });
+  const [requisitos, setRequisitos] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(null);
+  const [tentativas, setTentativas] = useState(0);
+  const [forceUpdate, setForceUpdate] = useState(0);
   
-  const theme = useTheme();
-  const [requisitosDocumentacao, setRequisitosDocumentacao] = useState([]);
-  const [openRequisitoDialog, setOpenRequisitoDialog] = useState(false);
-  const [requisitoEmEdicao, setRequisitoEmEdicao] = useState(null);
-  const [carregando, setCarregando] = useState(false);
-  const [renderizado, setRenderizado] = useState(false);
-  const [novoRequisito, setNovoRequisito] = useState({
+  // Estados para diálogos
+  const [openAddDialog, setOpenAddDialog] = useState(false);
+  const [openEditDialog, setOpenEditDialog] = useState(false);
+  const [openDeleteDialog, setOpenDeleteDialog] = useState(false);
+  const [currentRequisito, setCurrentRequisito] = useState(null);
+  const [formData, setFormData] = useState({
     descricao: '',
     observacoes: '',
     atendido: false
   });
 
-  // Adicionar um useEffect para forçar uma nova renderização quando o componente é montado
-  useEffect(() => {
-    console.log('DocumentosRequisitos: componente montado');
-    setRenderizado(true);
-    
-    // Forçar uma nova renderização após um pequeno delay
-    const timer = setTimeout(() => {
-      if (licitacaoId) {
-        console.log('DocumentosRequisitos: forçando nova renderização');
-        carregarRequisitosDocumentacao(licitacaoId);
-      }
-    }, 500);
-    
-    return () => {
-      console.log('DocumentosRequisitos: componente desmontado');
-      setRenderizado(false);
-      clearTimeout(timer);
-    };
-  }, []);
+  // Verificar se a licitação está concluída
+  const isLicitacaoConcluida = licitacaoStatus === 'CONCLUIDA' || licitacaoStatus === 'Concluida';
 
-  // Adicionar um useEffect para forçar uma nova renderização quando os requisitos são carregados
-  useEffect(() => {
-    if (requisitosDocumentacao && requisitosDocumentacao.length > 0) {
-      console.log('DocumentosRequisitos: requisitos carregados, forçando renderização');
-      // Forçar uma nova renderização após um pequeno delay
-      const timer = setTimeout(() => {
-        setRenderizado(prev => !prev); // Alternar o estado para forçar renderização
-      }, 100);
-      
-      return () => clearTimeout(timer);
-    }
-  }, [requisitosDocumentacao]);
-
-  // Adicionar um useEffect para depuração
-  useEffect(() => {
-    console.log('DocumentosRequisitos: estado atual:', { 
-      requisitosDocumentacao, 
-      carregando, 
-      licitacaoId, 
-      licitacaoStatus 
-    });
-  }, [requisitosDocumentacao, carregando, licitacaoId, licitacaoStatus]);
-
-  useEffect(() => {
-    if (licitacaoId) {
-      console.log('DocumentosRequisitos: licitacaoId mudou para', licitacaoId);
-      console.log('DocumentosRequisitos: licitacaoStatus recebido:', licitacaoStatus);
-      carregarRequisitosDocumentacao(licitacaoId);
-    } else {
-      console.log('DocumentosRequisitos: licitacaoId não definido');
-      setRequisitosDocumentacao([]);
-    }
-
-    // Função de limpeza que será executada quando o componente for desmontado
-    // ou quando licitacaoId mudar
-    return () => {
-      console.log('DocumentosRequisitos: limpando estado ao desmontar ou mudar licitacaoId');
-    };
-  }, [licitacaoId]);
-
-  useEffect(() => {
-    console.log('DocumentosRequisitos: licitacaoStatus mudou para', licitacaoStatus);
-    // Não limpar o estado aqui, apenas recarregar se tivermos um licitacaoId
-    if (licitacaoId) {
-      carregarRequisitosDocumentacao(licitacaoId);
-    }
-  }, [licitacaoStatus]);
-
-  const carregarRequisitosDocumentacao = async (licitacaoId) => {
+  const carregarRequisitos = async () => {
     if (!licitacaoId) {
-      console.error('Tentativa de carregar requisitos sem licitacaoId');
+      console.error('DocumentosRequisitos: licitacaoId não fornecido');
+      setError('ID da licitação não fornecido');
+      setLoading(false);
       return;
     }
     
-    // Limpar os requisitos antes de carregar novos
-    setRequisitosDocumentacao([]);
-    setCarregando(true);
+    setLoading(true);
+    setError(null);
+    setTentativas(prev => prev + 1);
     
     try {
-      console.log('Carregando requisitos para licitação:', licitacaoId);
-      const data = await documentoService.listarRequisitosDocumentacao(licitacaoId);
-      console.log('Requisitos carregados:', data);
+      console.log(`Carregando requisitos para licitacaoId: ${licitacaoId} (tentativa ${tentativas + 1})`);
       
-      if (data && data.length > 0) {
-        console.log('Atualizando estado com requisitos encontrados:', data.length);
-        // Garantir que cada requisito tenha um ID único para evitar problemas de renderização
-        const requisitosComId = data.map((req, index) => ({
-          ...req,
-          // Garantir que o ID existe, caso contrário, criar um ID temporário
-          id: req.id || `temp-${index}-${Date.now()}`
-        }));
-        console.log('Requisitos com IDs garantidos:', requisitosComId);
-        setRequisitosDocumentacao(requisitosComId);
-        
-        // Forçar uma nova renderização após um pequeno delay
-        setTimeout(() => {
-          setRenderizado(prev => !prev);
-        }, 200);
-      } else {
-        console.log('Nenhum requisito encontrado, limpando estado');
-        setRequisitosDocumentacao([]);
+      // Primeira tentativa: consulta direta
+      let { data, error } = await documentoService.listarRequisitosDocumentacaoDireto(licitacaoId);
+      
+      // Se não encontrou requisitos, tenta usar o método padrão
+      if ((!data || data.length === 0) && !error) {
+        console.log('Nenhum requisito encontrado diretamente. Tentando método padrão...');
+        const response = await documentoService.listarRequisitosDocumentacao(licitacaoId);
+        data = response.data;
+        error = response.error;
       }
-    } catch (error) {
-      console.error('Erro ao carregar requisitos de documentação:', error);
-      toast.error('Erro ao carregar requisitos de documentação');
-      setRequisitosDocumentacao([]);
+      
+      // Se ainda não encontrou, tenta criar requisitos de teste
+      if ((!data || data.length === 0) && !error && tentativas < 2) {
+        console.log('Nenhum requisito encontrado. Tentando criar requisitos de teste...');
+        const response = await documentoService.criarRequisitosTestePara(licitacaoId);
+        data = response.data;
+        error = response.error;
+      }
+      
+      if (error) {
+        console.error('Erro ao carregar requisitos:', error);
+        setError('Erro ao carregar requisitos. Por favor, tente novamente.');
+        setRequisitos([]);
+      } else {
+        console.log('Requisitos carregados:', data);
+        
+        if (Array.isArray(data) && data.length > 0) {
+          setRequisitos(data);
+          setError(null);
+        } else {
+          console.log('Nenhum requisito encontrado para esta licitação');
+          setError('Nenhum requisito encontrado para esta licitação');
+          setRequisitos([]);
+        }
+      }
+    } catch (err) {
+      console.error('Exceção ao carregar requisitos:', err);
+      setError('Ocorreu um erro ao carregar os requisitos. Por favor, tente novamente.');
+      setRequisitos([]);
     } finally {
-      setCarregando(false);
+      setLoading(false);
     }
   };
 
-  const handleAtualizarRequisito = async (id, atendido) => {
+  // Efeito para carregar requisitos quando o componente montar ou licitacaoId mudar
+  useEffect(() => {
+    console.log('DocumentosRequisitos montado/atualizado com licitacaoId:', licitacaoId);
+    if (licitacaoId) {
+      carregarRequisitos();
+    }
+  }, [licitacaoId, forceUpdate]);
+
+  const handleRefresh = () => {
+    setForceUpdate(prev => prev + 1);
+  };
+
+  // Funções para manipulação de requisitos
+  const handleAddRequisito = async () => {
+    // Não permitir adicionar se a licitação estiver concluída
+    if (isLicitacaoConcluida) {
+      toast.error('Não é possível adicionar requisitos em licitações concluídas');
+      return;
+    }
+
     try {
-      await documentoService.atualizarRequisito(id, { atendido });
-      setRequisitosDocumentacao(prev => 
-        prev.map(req => req.id === id ? { ...req, atendido } : req)
-      );
+      if (!formData.descricao) {
+        toast.error('A descrição é obrigatória');
+        return;
+      }
+
+      setLoading(true);
+      
+      const novoRequisito = {
+        licitacao_id: licitacaoId,
+        descricao: formData.descricao,
+        observacoes: formData.observacoes || '',
+        atendido: formData.atendido || false,
+        ordem: requisitos.length + 1
+      };
+      
+      const resultado = await documentoService.criarRequisito(novoRequisito);
+      
+      toast.success('Requisito adicionado com sucesso!');
+      setOpenAddDialog(false);
+      setFormData({
+        descricao: '',
+        observacoes: '',
+        atendido: false
+      });
+      
+      // Recarregar requisitos
+      handleRefresh();
+    } catch (error) {
+      console.error('Erro ao adicionar requisito:', error);
+      toast.error(`Erro ao adicionar requisito: ${error.message}`);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleEditRequisito = async () => {
+    // Não permitir editar se a licitação estiver concluída
+    if (isLicitacaoConcluida) {
+      toast.error('Não é possível editar requisitos em licitações concluídas');
+      return;
+    }
+
+    try {
+      if (!formData.descricao) {
+        toast.error('A descrição é obrigatória');
+        return;
+      }
+
+      setLoading(true);
+      
+      const requisitoAtualizado = {
+        descricao: formData.descricao,
+        observacoes: formData.observacoes || '',
+        atendido: formData.atendido || false
+      };
+      
+      await documentoService.atualizarRequisito(currentRequisito.id, requisitoAtualizado);
+      
       toast.success('Requisito atualizado com sucesso!');
+      setOpenEditDialog(false);
+      setCurrentRequisito(null);
+      
+      // Recarregar requisitos
+      handleRefresh();
     } catch (error) {
       console.error('Erro ao atualizar requisito:', error);
-      toast.error('Erro ao atualizar requisito');
+      toast.error(`Erro ao atualizar requisito: ${error.message}`);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const handleExcluirRequisito = async (id) => {
-    if (!window.confirm('Tem certeza que deseja excluir este requisito?')) return;
-    
+  const handleDeleteRequisito = async () => {
+    // Não permitir excluir se a licitação estiver concluída
+    if (isLicitacaoConcluida) {
+      toast.error('Não é possível excluir requisitos em licitações concluídas');
+      return;
+    }
+
     try {
-      await documentoService.excluirRequisito(id);
-      setRequisitosDocumentacao(prev => prev.filter(req => req.id !== id));
+      setLoading(true);
+      
+      await documentoService.excluirRequisito(currentRequisito.id);
+      
       toast.success('Requisito excluído com sucesso!');
+      setOpenDeleteDialog(false);
+      setCurrentRequisito(null);
+      
+      // Recarregar requisitos
+      handleRefresh();
     } catch (error) {
       console.error('Erro ao excluir requisito:', error);
-      toast.error('Erro ao excluir requisito');
+      toast.error(`Erro ao excluir requisito: ${error.message}`);
+    } finally {
+      setLoading(false);
     }
   };
 
-  const abrirDialogoEditarRequisito = (requisito) => {
-    setRequisitoEmEdicao(requisito);
-    setNovoRequisito({
-      descricao: requisito.descricao,
+  const handleOpenEditDialog = (requisito) => {
+    // Não permitir abrir o diálogo de edição se a licitação estiver concluída
+    if (isLicitacaoConcluida) {
+      toast.info('Não é possível editar requisitos em licitações concluídas');
+      return;
+    }
+
+    setCurrentRequisito(requisito);
+    setFormData({
+      descricao: requisito.descricao || '',
       observacoes: requisito.observacoes || '',
-      atendido: requisito.atendido
+      atendido: requisito.atendido || false
     });
-    setOpenRequisitoDialog(true);
+    setOpenEditDialog(true);
   };
 
-  const abrirDialogoNovoRequisito = () => {
-    setRequisitoEmEdicao(null);
-    setNovoRequisito({
+  const handleOpenDeleteDialog = (requisito) => {
+    // Não permitir abrir o diálogo de exclusão se a licitação estiver concluída
+    if (isLicitacaoConcluida) {
+      toast.info('Não é possível excluir requisitos em licitações concluídas');
+      return;
+    }
+
+    setCurrentRequisito(requisito);
+    setOpenDeleteDialog(true);
+  };
+
+  const handleCloseDialogs = () => {
+    setOpenAddDialog(false);
+    setOpenEditDialog(false);
+    setOpenDeleteDialog(false);
+    setCurrentRequisito(null);
+    setFormData({
       descricao: '',
       observacoes: '',
       atendido: false
     });
-    setOpenRequisitoDialog(true);
   };
 
-  const handleSalvarRequisito = async () => {
-    if (!novoRequisito.descricao) {
-      toast.error('A descrição do requisito é obrigatória');
-      return;
-    }
-
-    try {
-      if (requisitoEmEdicao) {
-        // Atualizar requisito existente
-        const requisito = await documentoService.atualizarRequisito(requisitoEmEdicao.id, {
-          ...novoRequisito,
-          licitacao_id: licitacaoId
-        });
-        
-        setRequisitosDocumentacao(prev => 
-          prev.map(req => req.id === requisito.id ? requisito : req)
-        );
-        toast.success('Requisito atualizado com sucesso!');
-      } else {
-        // Criar novo requisito
-        const requisito = await documentoService.criarRequisito({
-          ...novoRequisito,
-          licitacao_id: licitacaoId
-        });
-        
-        setRequisitosDocumentacao(prev => [...prev, requisito]);
-        toast.success('Requisito adicionado com sucesso!');
-      }
-      
-      setOpenRequisitoDialog(false);
-    } catch (error) {
-      console.error('Erro ao salvar requisito:', error);
-      toast.error('Erro ao salvar requisito');
-    }
-  };
-
-  const isLicitacaoEmAndamento = licitacaoStatus === 'EM_ANDAMENTO';
-  const isLicitacaoConcluida = licitacaoStatus === 'CONCLUIDA';
-
-  console.log('Status da licitação:', licitacaoStatus);
-  console.log('isLicitacaoEmAndamento:', isLicitacaoEmAndamento);
-  console.log('isLicitacaoConcluida:', isLicitacaoConcluida);
-
-  // Adicionar logs no return para depuração
-  console.log('DocumentosRequisitos: renderizando com estado:', { 
-    requisitosDocumentacao, 
-    carregando, 
-    renderizado,
-    isLicitacaoEmAndamento, 
-    isLicitacaoConcluida,
-    requisitosLength: requisitosDocumentacao?.length || 0
-  });
-
-  // Verificar se há requisitos para depuração
-  if (requisitosDocumentacao && requisitosDocumentacao.length > 0) {
-    console.log('Primeiro requisito para renderizar:', requisitosDocumentacao[0]);
-    console.log('Todos os requisitos para renderizar:', requisitosDocumentacao);
-  }
-
-  // Renderização direta para depuração
-  const renderizacaoDireta = () => {
-    if (!requisitosDocumentacao || requisitosDocumentacao.length === 0) {
-      return <p>Nenhum requisito encontrado.</p>;
-    }
-
-    return (
-      <div style={{ width: '100%', padding: '16px' }}>
-        <h3>Requisitos de Documentação (Renderização Direta)</h3>
-        <p>Total de requisitos: {requisitosDocumentacao.length}</p>
-        {requisitosDocumentacao.map((req, index) => (
-          <div key={req.id || `direct-${index}`} style={{ 
-            border: '1px solid #ccc', 
-            padding: '8px', 
-            margin: '8px 0',
-            borderRadius: '4px'
-          }}>
-            <p style={{ 
-              fontWeight: 'bold',
-              textDecoration: req.atendido ? 'line-through' : 'none'
-            }}>
-              {req.descricao}
-            </p>
-            {req.observacoes && (
-              <p style={{ fontSize: '0.9em', color: '#666' }}>
-                Observações: {req.observacoes}
-              </p>
-            )}
-            <div style={{ display: 'flex', justifyContent: 'flex-end' }}>
-              <label>
-                <input 
-                  type="checkbox" 
-                  checked={req.atendido} 
-                  disabled={!isLicitacaoEmAndamento || isLicitacaoConcluida}
-                  onChange={(e) => handleAtualizarRequisito(req.id, e.target.checked)}
-                />
-                Atendido
-              </label>
-            </div>
-          </div>
-        ))}
-      </div>
-    );
-  };
-
-  if (!licitacaoId) {
-    console.log('DocumentosRequisitos: licitacaoId não definido, não renderizando');
-    return (
-      <Box sx={{ textAlign: 'center', py: 4 }}>
-        <Typography variant="body2" color="text.secondary" align="center">
-          Nenhuma licitação selecionada.
-        </Typography>
-      </Box>
-    );
-  }
-
-  // Renderização alternativa para depuração
-  if (requisitosDocumentacao && requisitosDocumentacao.length > 0 && !carregando) {
-    return renderizacaoDireta();
-  }
+  // Renderizar informações de depuração
+  const renderDebugInfo = () => (
+    <Box sx={{ mt: 2, p: 1, bgcolor: '#f5f5f5', borderRadius: 1, fontSize: '0.75rem' }}>
+      <Typography variant="caption" component="div" sx={{ fontWeight: 'bold' }}>
+        Informações de Depuração:
+      </Typography>
+      <div>ID da Licitação: {licitacaoId || 'Não selecionado'}</div>
+      <div>Status: {licitacaoStatus || 'Não definido'}</div>
+      <div>Tentativas de carregamento: {tentativas}</div>
+      <div>Requisitos carregados: {requisitos.length}</div>
+    </Box>
+  );
 
   return (
-    <>
-      <Card elevation={0} sx={{ 
-        border: '1px solid',
+    <Box sx={{ p: 2, width: '100%' }}>
+      <Box sx={{ 
+        display: 'flex', 
+        justifyContent: 'space-between', 
+        alignItems: 'center', 
+        mb: 2,
+        borderBottom: '1px solid',
         borderColor: 'divider',
-        borderRadius: 2,
-        height: '100%'
+        pb: 1.5
       }}>
-        <CardContent>
-          <Box sx={{ 
-            display: 'flex', 
-            justifyContent: 'space-between', 
-            alignItems: 'center',
-            mb: 3 
-          }}>
-            <Box sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
-              <Typography variant="h6" sx={{ fontWeight: 600 }}>
-                Requisitos de Documentação
-              </Typography>
-              {(!isLicitacaoEmAndamento || isLicitacaoConcluida) && (
-                <Typography 
-                  variant="caption" 
-                  sx={{ 
-                    bgcolor: 'info.lighter', 
-                    color: 'info.main', 
-                    px: 1, 
-                    py: 0.5, 
-                    borderRadius: 1,
-                    fontWeight: 500
-                  }}
-                >
-                  Somente Visualização
-                </Typography>
-              )}
-            </Box>
-            {isLicitacaoEmAndamento && !isLicitacaoConcluida && (
-              <Button
-                variant="contained"
-                startIcon={<AddIcon />}
-                onClick={abrirDialogoNovoRequisito}
-              >
-                Adicionar Requisito
-              </Button>
-            )}
-          </Box>
-
-          {!isLicitacaoEmAndamento || isLicitacaoConcluida ? (
-            <Box sx={{ mb: 2, p: 1, bgcolor: 'info.lighter', borderRadius: 1 }}>
-              <Typography variant="body2" color="info.main">
-                Esta licitação está {isLicitacaoConcluida ? 'concluída' : 'não está em andamento'}. 
-                Os requisitos estão disponíveis apenas para visualização.
-              </Typography>
-            </Box>
-          ) : null}
-
-          {carregando ? (
-            <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', py: 4 }}>
-              <CircularProgress size={40} />
-            </Box>
-          ) : requisitosDocumentacao && requisitosDocumentacao.length > 0 ? (
-            <Box sx={{ width: '100%' }}>
-              <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
-                Exibindo {requisitosDocumentacao.length} requisitos
-                <Button 
-                  size="small" 
-                  onClick={() => setRenderizado(prev => !prev)}
-                  sx={{ ml: 2 }}
-                >
-                  Atualizar
-                </Button>
-              </Typography>
-              
-              {/* Renderização alternativa para garantir que os requisitos sejam exibidos */}
-              <Box sx={{ width: '100%' }}>
-                {requisitosDocumentacao.map((requisito, index) => (
+        <Typography variant="h6" sx={{ fontWeight: 600, color: 'primary.main' }}>
+          Requisitos da Documentação
+          {isLicitacaoConcluida && (
+            <Typography 
+              component="span" 
+              variant="caption" 
+              sx={{ 
+                ml: 2, 
+                bgcolor: 'info.light', 
+                color: 'info.contrastText', 
+                px: 1, 
+                py: 0.5, 
+                borderRadius: 1,
+                fontWeight: 'medium'
+              }}
+            >
+              Licitação Concluída - Somente Visualização
+            </Typography>
+          )}
+        </Typography>
+        <Box>
+          <Button 
+            startIcon={<AddIcon />}
+            onClick={() => setOpenAddDialog(true)}
+            variant="contained"
+            color="primary"
+            size="small"
+            sx={{ mr: 1, borderRadius: 2 }}
+            disabled={isLicitacaoConcluida}
+          >
+            Adicionar
+          </Button>
+          <Button 
+            startIcon={<RefreshIcon />} 
+            onClick={handleRefresh} 
+            disabled={loading}
+            variant="outlined"
+            size="small"
+            sx={{ borderRadius: 2 }}
+          >
+            Atualizar
+          </Button>
+        </Box>
+      </Box>
+      
+      {loading ? (
+        <Box sx={{ display: 'flex', justifyContent: 'center', my: 4 }}>
+          <CircularProgress />
+        </Box>
+      ) : error ? (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          {error}
+        </Alert>
+      ) : requisitos.length > 0 ? (
+        <List sx={{ width: '100%', bgcolor: 'background.paper', borderRadius: 1, boxShadow: 1 }}>
+          {requisitos.map((requisito, index) => (
+            <React.Fragment key={requisito.id || index}>
+              <ListItem 
+                alignItems="flex-start"
+                sx={{ 
+                  py: 1.5,
+                  position: 'relative',
+                  pr: 9, // Espaço para os botões de ação
+                  '&:hover': { 
+                    bgcolor: 'rgba(0, 0, 0, 0.04)',
+                    '& .requisito-actions': {
+                      opacity: 1
+                    }
+                  }
+                }}
+                secondaryAction={
                   <Box 
-                    key={requisito.id || `fallback-${index}`}
-                    sx={{
-                      border: '1px solid',
-                      borderColor: 'divider',
-                      borderRadius: 1,
-                      p: 2,
-                      mb: 2,
-                      display: 'flex',
-                      justifyContent: 'space-between',
-                      alignItems: 'flex-start',
-                      width: '100%'
+                    className="requisito-actions" 
+                    sx={{ 
+                      opacity: { xs: 1, sm: 0.2 }, 
+                      transition: 'opacity 0.2s',
+                      position: 'absolute',
+                      right: 8,
+                      top: '50%',
+                      transform: 'translateY(-50%)'
                     }}
                   >
-                    <Box sx={{ flex: 1 }}>
+                    <Tooltip title={isLicitacaoConcluida ? "Não é possível editar requisitos de licitações concluídas" : "Editar"}>
+                      <span>
+                        <IconButton 
+                          edge="end" 
+                          aria-label="editar"
+                          onClick={() => handleOpenEditDialog(requisito)}
+                          size="small"
+                          color="primary"
+                          disabled={isLicitacaoConcluida}
+                        >
+                          <EditIcon fontSize="small" />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                    <Tooltip title={isLicitacaoConcluida ? "Não é possível excluir requisitos de licitações concluídas" : "Excluir"}>
+                      <span>
+                        <IconButton 
+                          edge="end" 
+                          aria-label="excluir"
+                          onClick={() => handleOpenDeleteDialog(requisito)}
+                          size="small"
+                          color="error"
+                          sx={{ ml: 1 }}
+                          disabled={isLicitacaoConcluida}
+                        >
+                          <DeleteIcon fontSize="small" />
+                        </IconButton>
+                      </span>
+                    </Tooltip>
+                  </Box>
+                }
+              >
+                <Box sx={{ display: 'flex', alignItems: 'flex-start', width: '100%' }}>
+                  <Checkbox
+                    checked={requisito.atendido || false}
+                    onChange={async (e) => {
+                      if (isLicitacaoConcluida) return;
+                      try {
+                        setLoading(true);
+                        await documentoService.atualizarRequisito(requisito.id, {
+                          ...requisito,
+                          atendido: e.target.checked
+                        });
+                        // Atualizar o estado local para feedback imediato
+                        setRequisitos(prevRequisitos => 
+                          prevRequisitos.map(r => 
+                            r.id === requisito.id ? {...r, atendido: e.target.checked} : r
+                          )
+                        );
+                        toast.success(`Requisito ${e.target.checked ? 'atendido' : 'marcado como pendente'}`);
+                      } catch (error) {
+                        console.error('Erro ao atualizar status do requisito:', error);
+                        toast.error(`Erro ao atualizar status: ${error.message}`);
+                      } finally {
+                        setLoading(false);
+                      }
+                    }}
+                    color="success"
+                    disabled={isLicitacaoConcluida}
+                    sx={{ 
+                      pt: 0,
+                      '&.Mui-checked': {
+                        color: 'success.main',
+                      }
+                    }}
+                  />
+                  <Box sx={{ ml: 1, width: 'calc(100% - 42px)', overflow: 'hidden' }}>
+                    <Typography 
+                      variant="body1" 
+                      component="div" 
+                      sx={{ 
+                        fontWeight: 500,
+                        color: requisito.atendido ? 'text.secondary' : 'text.primary',
+                        textDecoration: requisito.atendido ? 'line-through' : 'none',
+                        mb: 0.5,
+                        wordBreak: 'break-word',
+                        overflowWrap: 'break-word'
+                      }}
+                    >
+                      {requisito.descricao || 'Requisito sem descrição'}
+                    </Typography>
+                    
+                    {(requisito.observacoes || requisito.observacao) && (
                       <Typography 
-                        variant="subtitle1" 
+                        component="div" 
+                        variant="body2" 
+                        color="text.secondary"
                         sx={{ 
-                          textDecoration: requisito.atendido ? 'line-through' : 'none',
-                          color: requisito.atendido ? 'text.secondary' : 'text.primary'
+                          mb: 0.5,
+                          fontSize: '0.875rem',
+                          color: 'text.secondary',
+                          wordBreak: 'break-word',
+                          overflowWrap: 'break-word'
                         }}
                       >
-                        {requisito.descricao}
+                        {requisito.observacoes || requisito.observacao}
                       </Typography>
-                      {requisito.observacoes && (
-                        <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                          Observações: {requisito.observacoes}
-                        </Typography>
-                      )}
-                    </Box>
-                    <Box sx={{ display: 'flex', gap: 1, ml: 2, alignItems: 'center' }}>
-                      {isLicitacaoEmAndamento && !isLicitacaoConcluida ? (
-                        <>
-                          <Checkbox
-                            checked={requisito.atendido}
-                            onChange={(e) => handleAtualizarRequisito(requisito.id, e.target.checked)}
-                            color="success"
-                          />
-                          <IconButton
-                            size="small"
-                            onClick={() => abrirDialogoEditarRequisito(requisito)}
-                          >
-                            <EditIcon fontSize="small" />
-                          </IconButton>
-                          <IconButton
-                            size="small"
-                            onClick={() => handleExcluirRequisito(requisito.id)}
-                            sx={{ color: 'error.main' }}
-                          >
-                            <DeleteIcon fontSize="small" />
-                          </IconButton>
-                        </>
-                      ) : (
-                        <Checkbox
-                          checked={requisito.atendido}
-                          disabled
-                          color="success"
-                        />
-                      )}
-                    </Box>
+                    )}
+                    
+                    <Typography 
+                      component="div" 
+                      variant="caption" 
+                      sx={{
+                        display: 'inline-block',
+                        px: 1,
+                        py: 0.25,
+                        borderRadius: 1,
+                        fontSize: '0.75rem',
+                        fontWeight: 'medium',
+                        bgcolor: requisito.atendido ? 'success.light' : 'warning.light',
+                        color: requisito.atendido ? 'success.contrastText' : 'warning.contrastText',
+                      }}
+                    >
+                      {requisito.atendido ? "Atendido" : "Pendente"}
+                    </Typography>
                   </Box>
-                ))}
-              </Box>
-            </Box>
-          ) : (
-            <Box sx={{ textAlign: 'center', py: 4 }}>
-              <Typography variant="body2" color="text.secondary" align="center">
-                Nenhum requisito encontrado. {isLicitacaoEmAndamento ? 'Faça o upload do edital para extrair os requisitos ou adicione manualmente.' : ''}
-              </Typography>
-              <Button 
-                variant="outlined" 
-                onClick={() => carregarRequisitosDocumentacao(licitacaoId)}
-                sx={{ mt: 2 }}
-                startIcon={<CircularProgress size={16} />}
-              >
-                Recarregar Requisitos
-              </Button>
-            </Box>
-          )}
-        </CardContent>
-      </Card>
+                </Box>
+              </ListItem>
+              {index < requisitos.length - 1 && <Divider />}
+            </React.Fragment>
+          ))}
+        </List>
+      ) : (
+        <Alert severity="info">
+          Nenhum requisito encontrado para esta licitação.
+        </Alert>
+      )}
+      
+      {renderDebugInfo()}
 
-      {/* Dialog para adicionar/editar requisito */}
+      {/* Diálogo para adicionar requisito */}
       <Dialog 
-        open={openRequisitoDialog} 
-        onClose={() => setOpenRequisitoDialog(false)}
-        maxWidth="sm"
+        open={openAddDialog} 
+        onClose={handleCloseDialogs} 
+        maxWidth="sm" 
         fullWidth
+        PaperProps={{
+          sx: { borderRadius: 2 }
+        }}
       >
-        <DialogTitle>
-          {requisitoEmEdicao ? 'Editar Requisito' : 'Adicionar Requisito'}
+        <DialogTitle sx={{ 
+          borderBottom: '1px solid', 
+          borderColor: 'divider',
+          pb: 1,
+          '& .MuiTypography-root': {
+            fontWeight: 600,
+            color: 'primary.main'
+          }
+        }}>
+          Adicionar Requisito
         </DialogTitle>
-        <DialogContent>
-          <Box sx={{ mt: 2, display: 'flex', flexDirection: 'column', gap: 2 }}>
+        <DialogContent sx={{ pt: 3 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
             <TextField
               label="Descrição"
-              value={novoRequisito.descricao}
-              onChange={(e) => setNovoRequisito({ ...novoRequisito, descricao: e.target.value })}
+              value={formData.descricao}
+              onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
               fullWidth
               required
-              multiline
-              rows={3}
+              variant="outlined"
+              placeholder="Digite a descrição do requisito"
+              InputProps={{
+                sx: { borderRadius: 1 }
+              }}
             />
             <TextField
               label="Observações"
-              value={novoRequisito.observacoes}
-              onChange={(e) => setNovoRequisito({ ...novoRequisito, observacoes: e.target.value })}
+              value={formData.observacoes}
+              onChange={(e) => setFormData({ ...formData, observacoes: e.target.value })}
               fullWidth
               multiline
-              rows={2}
+              rows={3}
+              variant="outlined"
+              placeholder="Digite observações adicionais (opcional)"
+              InputProps={{
+                sx: { borderRadius: 1 }
+              }}
             />
-            <Box sx={{ display: 'flex', alignItems: 'center' }}>
-              <Checkbox
-                checked={novoRequisito.atendido}
-                onChange={(e) => setNovoRequisito({ ...novoRequisito, atendido: e.target.checked })}
-                color="success"
-              />
-              <Typography>Requisito atendido</Typography>
-            </Box>
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={formData.atendido}
+                  onChange={(e) => setFormData({ ...formData, atendido: e.target.checked })}
+                  color="success"
+                />
+              }
+              label={
+                <Typography 
+                  variant="body2" 
+                  sx={{ 
+                    fontWeight: formData.atendido ? 600 : 400,
+                    color: formData.atendido ? 'success.main' : 'text.primary'
+                  }}
+                >
+                  Requisito Atendido
+                </Typography>
+              }
+            />
           </Box>
         </DialogContent>
-        <DialogActions>
-          <Button onClick={() => setOpenRequisitoDialog(false)}>Cancelar</Button>
+        <DialogActions sx={{ px: 3, py: 2, borderTop: '1px solid', borderColor: 'divider' }}>
           <Button 
-            onClick={handleSalvarRequisito} 
-            variant="contained"
-            disabled={!novoRequisito.descricao}
+            onClick={handleCloseDialogs} 
+            variant="outlined"
+            sx={{ borderRadius: 2 }}
+          >
+            Cancelar
+          </Button>
+          <Button 
+            onClick={handleAddRequisito} 
+            variant="contained" 
+            color="primary"
+            sx={{ borderRadius: 2 }}
+          >
+            Adicionar
+          </Button>
+        </DialogActions>
+      </Dialog>
+
+      {/* Diálogo para editar requisito */}
+      <Dialog 
+        open={openEditDialog} 
+        onClose={handleCloseDialogs} 
+        maxWidth="sm" 
+        fullWidth
+        PaperProps={{
+          sx: { borderRadius: 2 }
+        }}
+      >
+        <DialogTitle sx={{ 
+          borderBottom: '1px solid', 
+          borderColor: 'divider',
+          pb: 1,
+          '& .MuiTypography-root': {
+            fontWeight: 600,
+            color: 'primary.main'
+          }
+        }}>
+          Editar Requisito
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3 }}>
+          <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
+            <TextField
+              label="Descrição"
+              value={formData.descricao}
+              onChange={(e) => setFormData({ ...formData, descricao: e.target.value })}
+              fullWidth
+              required
+              variant="outlined"
+              placeholder="Digite a descrição do requisito"
+              InputProps={{
+                sx: { borderRadius: 1 }
+              }}
+            />
+            <TextField
+              label="Observações"
+              value={formData.observacoes}
+              onChange={(e) => setFormData({ ...formData, observacoes: e.target.value })}
+              fullWidth
+              multiline
+              rows={3}
+              variant="outlined"
+              placeholder="Digite observações adicionais (opcional)"
+              InputProps={{
+                sx: { borderRadius: 1 }
+              }}
+            />
+            <FormControlLabel
+              control={
+                <Checkbox
+                  checked={formData.atendido}
+                  onChange={(e) => setFormData({ ...formData, atendido: e.target.checked })}
+                  color="success"
+                />
+              }
+              label={
+                <Typography 
+                  variant="body2" 
+                  sx={{ 
+                    fontWeight: formData.atendido ? 600 : 400,
+                    color: formData.atendido ? 'success.main' : 'text.primary'
+                  }}
+                >
+                  Requisito Atendido
+                </Typography>
+              }
+            />
+          </Box>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+          <Button 
+            onClick={handleCloseDialogs} 
+            variant="outlined"
+            sx={{ borderRadius: 2 }}
+          >
+            Cancelar
+          </Button>
+          <Button 
+            onClick={handleEditRequisito} 
+            variant="contained" 
+            color="primary"
+            sx={{ borderRadius: 2 }}
           >
             Salvar
           </Button>
         </DialogActions>
       </Dialog>
-    </>
+
+      {/* Diálogo para confirmar exclusão */}
+      <Dialog 
+        open={openDeleteDialog} 
+        onClose={handleCloseDialogs}
+        PaperProps={{
+          sx: { borderRadius: 2 }
+        }}
+      >
+        <DialogTitle sx={{ 
+          borderBottom: '1px solid', 
+          borderColor: 'divider',
+          pb: 1,
+          color: 'error.main',
+          '& .MuiTypography-root': {
+            fontWeight: 600
+          }
+        }}>
+          Confirmar Exclusão
+        </DialogTitle>
+        <DialogContent sx={{ pt: 3, pb: 2 }}>
+          <Typography>
+            Tem certeza que deseja excluir o requisito:
+          </Typography>
+          <Typography sx={{ fontWeight: 600, mt: 1, mb: 1 }}>
+            "{currentRequisito?.descricao}"?
+          </Typography>
+          <Typography variant="body2" color="text.secondary">
+            Esta ação não pode ser desfeita.
+          </Typography>
+        </DialogContent>
+        <DialogActions sx={{ px: 3, py: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+          <Button 
+            onClick={handleCloseDialogs} 
+            variant="outlined"
+            sx={{ borderRadius: 2 }}
+          >
+            Cancelar
+          </Button>
+          <Button 
+            onClick={handleDeleteRequisito} 
+            variant="contained" 
+            color="error"
+            sx={{ borderRadius: 2 }}
+          >
+            Excluir
+          </Button>
+        </DialogActions>
+      </Dialog>
+    </Box>
   );
 };
 
