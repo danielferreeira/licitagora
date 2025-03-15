@@ -13,6 +13,8 @@ RETURNS void
 LANGUAGE plpgsql
 SECURITY DEFINER
 AS $$
+DECLARE
+    column_exists BOOLEAN;
 BEGIN
     -- Criar a tabela se não existir
     CREATE TABLE IF NOT EXISTS public.clientes (
@@ -27,15 +29,42 @@ BEGIN
         bairro VARCHAR(100),
         cidade VARCHAR(100),
         estado VARCHAR(2),
-        ramos_atividade TEXT[],
+        cnaes JSONB DEFAULT '[]'::JSONB,
         created_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP,
         updated_at TIMESTAMP WITH TIME ZONE DEFAULT CURRENT_TIMESTAMP
     );
+
+    -- Verificar se a coluna ramos_atividade ainda existe
+    SELECT EXISTS (
+        SELECT FROM information_schema.columns 
+        WHERE table_name = 'clientes' AND column_name = 'ramos_atividade'
+    ) INTO column_exists;
+
+    -- Se a coluna ramos_atividade existir, migrar os dados para cnaes e remover a coluna
+    IF column_exists THEN
+        -- Migrar dados de ramos_atividade para cnaes
+        UPDATE public.clientes
+        SET cnaes = (
+            SELECT jsonb_agg(
+                jsonb_build_object(
+                    'codigo', '00.00-0-' || LPAD(ordinality::text, 2, '0'),
+                    'descricao', value,
+                    'tipo', CASE WHEN ordinality = 1 THEN 'principal' ELSE 'secundaria' END
+                )
+            )
+            FROM unnest(ramos_atividade) WITH ORDINALITY
+        )
+        WHERE ramos_atividade IS NOT NULL AND array_length(ramos_atividade, 1) > 0;
+
+        -- Remover a coluna ramos_atividade
+        ALTER TABLE public.clientes DROP COLUMN IF EXISTS ramos_atividade;
+    END IF;
 
     -- Criar índices
     CREATE INDEX IF NOT EXISTS idx_clientes_razao_social ON public.clientes(razao_social);
     CREATE INDEX IF NOT EXISTS idx_clientes_cnpj ON public.clientes(cnpj);
     CREATE INDEX IF NOT EXISTS idx_clientes_email ON public.clientes(email);
+    CREATE INDEX IF NOT EXISTS idx_clientes_cnaes ON public.clientes USING GIN (cnaes);
 
     -- Remover trigger existente se houver
     DROP TRIGGER IF EXISTS update_clientes_updated_at ON public.clientes;

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import {
   Dialog,
   DialogTitle,
@@ -26,6 +26,7 @@ import {
   Business as BusinessIcon,
   LocationOn as LocationOnIcon,
   Domain as DomainIcon,
+  Search as SearchIcon,
 } from '@mui/icons-material';
 import { toast } from 'react-toastify';
 import { clienteService } from '../../services/supabase';
@@ -37,18 +38,9 @@ const estados = [
   'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'
 ];
 
-const ramosAtividade = [
-  'Construção Civil',
-  'Tecnologia da Informação',
-  'Serviços de Limpeza',
-  'Manutenção',
-  'Consultoria',
-  'Fornecimento de Materiais',
-  'Outros'
-];
-
 export default function NovoClienteDialog({ open, onClose, onSuccess }) {
   const [loading, setLoading] = useState(false);
+  const [buscandoCnpj, setBuscandoCnpj] = useState(false);
   const [formData, setFormData] = useState({
     razao_social: '',
     cnpj: '',
@@ -60,7 +52,7 @@ export default function NovoClienteDialog({ open, onClose, onSuccess }) {
     bairro: '',
     cidade: '',
     estado: '',
-    ramos_atividade: []
+    cnaes: []
   });
   const [errors, setErrors] = useState({});
 
@@ -144,6 +136,126 @@ export default function NovoClienteDialog({ open, onClose, onSuccess }) {
       toast.error('Erro ao buscar CEP');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const buscarCnpj = async () => {
+    const cnpj = formData.cnpj.replace(/\D/g, '');
+    if (!cnpj || cnpj.length !== 14) {
+      toast.error('CNPJ inválido');
+      return;
+    }
+
+    setBuscandoCnpj(true);
+    try {
+      // Usando a API CNPJ.ws que não tem problemas de CORS
+      const response = await axios.get(`https://publica.cnpj.ws/cnpj/${cnpj}`);
+      
+      // Formatando o CEP para o formato 00000-000
+      const cepFormatado = response.data.estabelecimento.cep ? 
+        response.data.estabelecimento.cep.replace(/^(\d{5})(\d{3})$/, '$1-$2') : '';
+
+      // Formatando o telefone para o formato (00) 00000-0000
+      const ddd = response.data.estabelecimento.ddd || '';
+      const telefone = response.data.estabelecimento.telefone || '';
+      const telefoneFormatado = ddd && telefone ? 
+        `(${ddd}) ${telefone.replace(/^(\d{4,5})(\d{4})$/, '$1-$2')}` : '';
+
+      // Extraindo CNAEs
+      const cnaes = [];
+      
+      // CNAE Principal
+      if (response.data.estabelecimento.atividade_principal) {
+        cnaes.push({
+          codigo: response.data.estabelecimento.atividade_principal.subclasse,
+          descricao: response.data.estabelecimento.atividade_principal.descricao,
+          tipo: 'principal'
+        });
+      }
+      
+      // CNAEs Secundários
+      if (response.data.estabelecimento.atividades_secundarias && 
+          response.data.estabelecimento.atividades_secundarias.length > 0) {
+        response.data.estabelecimento.atividades_secundarias.forEach(atividade => {
+          cnaes.push({
+            codigo: atividade.subclasse,
+            descricao: atividade.descricao,
+            tipo: 'secundaria'
+          });
+        });
+      }
+
+      setFormData(prev => ({
+        ...prev,
+        razao_social: response.data.razao_social || '',
+        email: response.data.estabelecimento.email || '',
+        telefone: telefoneFormatado,
+        cep: cepFormatado,
+        endereco: response.data.estabelecimento.logradouro || '',
+        numero: response.data.estabelecimento.numero || '',
+        bairro: response.data.estabelecimento.bairro || '',
+        cidade: response.data.estabelecimento.cidade?.nome || '',
+        estado: response.data.estabelecimento.estado?.sigla || '',
+        cnaes: cnaes
+      }));
+
+      toast.success('Dados do CNPJ carregados com sucesso!');
+    } catch (error) {
+      console.error('Erro ao buscar CNPJ:', error);
+      
+      // Tentativa alternativa com a API BrasilAPI
+      try {
+        const brasilApiResponse = await axios.get(`https://brasilapi.com.br/api/cnpj/v1/${cnpj}`);
+        
+        // Formatando o CEP
+        const cepFormatado = brasilApiResponse.data.cep ? 
+          brasilApiResponse.data.cep.replace(/^(\d{5})(\d{3})$/, '$1-$2') : '';
+        
+        // Extraindo CNAEs
+        const cnaes = [];
+        
+        // CNAE Principal
+        if (brasilApiResponse.data.cnae_fiscal_descricao) {
+          cnaes.push({
+            codigo: brasilApiResponse.data.cnae_fiscal,
+            descricao: brasilApiResponse.data.cnae_fiscal_descricao,
+            tipo: 'principal'
+          });
+        }
+        
+        // CNAEs Secundários
+        if (brasilApiResponse.data.cnaes_secundarios && 
+            brasilApiResponse.data.cnaes_secundarios.length > 0) {
+          brasilApiResponse.data.cnaes_secundarios.forEach(atividade => {
+            cnaes.push({
+              codigo: atividade.codigo,
+              descricao: atividade.descricao,
+              tipo: 'secundaria'
+            });
+          });
+        }
+
+        setFormData(prev => ({
+          ...prev,
+          razao_social: brasilApiResponse.data.razao_social || '',
+          email: '',  // BrasilAPI não retorna email
+          telefone: brasilApiResponse.data.ddd_telefone_1 || '',
+          cep: cepFormatado,
+          endereco: brasilApiResponse.data.logradouro || '',
+          numero: brasilApiResponse.data.numero || '',
+          bairro: brasilApiResponse.data.bairro || '',
+          cidade: brasilApiResponse.data.municipio || '',
+          estado: brasilApiResponse.data.uf || '',
+          cnaes: cnaes
+        }));
+
+        toast.success('Dados do CNPJ carregados com sucesso!');
+      } catch (brasilApiError) {
+        console.error('Erro ao buscar CNPJ na BrasilAPI:', brasilApiError);
+        toast.error('Não foi possível buscar informações do CNPJ. Tente novamente mais tarde ou preencha manualmente.');
+      }
+    } finally {
+      setBuscandoCnpj(false);
     }
   };
 
@@ -247,17 +359,6 @@ export default function NovoClienteDialog({ open, onClose, onSuccess }) {
                     <TextField
                       required
                       fullWidth
-                      label="Razão Social"
-                      name="razao_social"
-                      value={formData.razao_social}
-                      onChange={handleChange}
-                      variant="outlined"
-                    />
-                  </Grid>
-                  <Grid item xs={12} sm={6}>
-                    <TextField
-                      required
-                      fullWidth
                       label="CNPJ"
                       name="cnpj"
                       value={formData.cnpj}
@@ -266,6 +367,29 @@ export default function NovoClienteDialog({ open, onClose, onSuccess }) {
                       helperText={errors.cnpj}
                       placeholder="00.000.000/0000-00"
                       inputProps={{ maxLength: 18 }}
+                      variant="outlined"
+                      InputProps={{
+                        endAdornment: (
+                          <IconButton 
+                            onClick={buscarCnpj} 
+                            disabled={buscandoCnpj || formData.cnpj.replace(/\D/g, '').length !== 14}
+                            color="primary"
+                            size="small"
+                          >
+                            {buscandoCnpj ? <CircularProgress size={20} /> : <SearchIcon />}
+                          </IconButton>
+                        ),
+                      }}
+                    />
+                  </Grid>
+                  <Grid item xs={12} sm={6}>
+                    <TextField
+                      required
+                      fullWidth
+                      label="Razão Social"
+                      name="razao_social"
+                      value={formData.razao_social}
+                      onChange={handleChange}
                       variant="outlined"
                     />
                   </Grid>
@@ -384,37 +508,48 @@ export default function NovoClienteDialog({ open, onClose, onSuccess }) {
                 <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 1 }}>
                   <DomainIcon color="primary" />
                   <Typography variant="subtitle1" fontWeight="bold">
-                    Ramos de Atividade
+                    CNAEs
                   </Typography>
                 </Box>
-                <FormControl fullWidth variant="outlined">
-                  <InputLabel>Selecione os Ramos de Atividade</InputLabel>
-                  <Select
-                    multiple
-                    name="ramos_atividade"
-                    value={formData.ramos_atividade}
-                    onChange={(e) => handleChange({
-                      target: {
-                        name: 'ramos_atividade',
-                        value: e.target.value
+                {formData.cnaes.length > 0 ? (
+                  <Box>
+                    <Typography variant="subtitle2" gutterBottom>
+                      CNAE Principal:
+                    </Typography>
+                    {formData.cnaes
+                      .filter(cnae => cnae.tipo === 'principal')
+                      .map((cnae, index) => (
+                        <Chip 
+                          key={index}
+                          label={`${cnae.codigo} - ${cnae.descricao}`}
+                          color="primary"
+                          sx={{ m: 0.5 }}
+                        />
+                      ))
+                    }
+                    
+                    <Typography variant="subtitle2" gutterBottom sx={{ mt: 2 }}>
+                      CNAEs Secundários:
+                    </Typography>
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
+                      {formData.cnaes
+                        .filter(cnae => cnae.tipo === 'secundaria')
+                        .map((cnae, index) => (
+                          <Chip 
+                            key={index}
+                            label={`${cnae.codigo} - ${cnae.descricao}`}
+                            variant="outlined"
+                            sx={{ m: 0.5 }}
+                          />
+                        ))
                       }
-                    })}
-                    label="Selecione os Ramos de Atividade"
-                    renderValue={(selected) => (
-                      <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 0.5 }}>
-                        {selected.map((value) => (
-                          <Chip key={value} label={value} size="small" />
-                        ))}
-                      </Box>
-                    )}
-                  >
-                    {ramosAtividade.map((ramo) => (
-                      <MenuItem key={ramo} value={ramo}>
-                        {ramo}
-                      </MenuItem>
-                    ))}
-                  </Select>
-                </FormControl>
+                    </Box>
+                  </Box>
+                ) : (
+                  <Alert severity="info">
+                    Os CNAEs serão carregados automaticamente ao buscar os dados pelo CNPJ.
+                  </Alert>
+                )}
               </Stack>
             </Paper>
           </Stack>

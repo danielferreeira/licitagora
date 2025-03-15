@@ -63,7 +63,7 @@ export const clienteService = {
                 bairro: cliente.bairro?.trim(),
                 cidade: cliente.cidade?.trim(),
                 estado: cliente.estado?.trim(),
-                ramos_atividade: Array.isArray(cliente.ramos_atividade) ? cliente.ramos_atividade : []
+                cnaes: Array.isArray(cliente.cnaes) ? cliente.cnaes : []
             };
 
             // Verifica se já existe um cliente com o mesmo CNPJ
@@ -111,7 +111,7 @@ export const clienteService = {
                 bairro: cliente.bairro?.trim(),
                 cidade: cliente.cidade?.trim(),
                 estado: cliente.estado?.trim(),
-                ramos_atividade: Array.isArray(cliente.ramos_atividade) ? cliente.ramos_atividade : []
+                cnaes: Array.isArray(cliente.cnaes) ? cliente.cnaes : []
             };
 
             const { data, error } = await supabase
@@ -139,13 +139,23 @@ export const clienteService = {
         if (error) throw error;
     },
 
-    // Buscar clientes por ramo
-    async buscarClientesPorRamo(ramo) {
-        const { data, error } = await supabase
-            .rpc('buscar_clientes_por_ramo', { p_ramo_atividade: ramo })
-        
-        if (error) throw error
-        return data
+    // Buscar clientes por CNAE
+    async buscarClientesPorCnae(codigoCnae) {
+        try {
+            await verificarAutenticacao();
+            
+            // Usando operador @> para verificar se o array JSONB contém um objeto com o código especificado
+            const { data, error } = await supabase
+                .from('clientes')
+                .select('*')
+                .or(`cnaes::jsonb @> '[{"codigo":"${codigoCnae}"}]',cnaes::jsonb @> '[{"codigo":"${codigoCnae.split('-')[0]}%"}]'`);
+            
+            if (error) throw error;
+            return data || [];
+        } catch (error) {
+            console.error('Erro ao buscar clientes por CNAE:', error);
+            throw error;
+        }
     }
 }
 

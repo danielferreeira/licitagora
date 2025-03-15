@@ -55,16 +55,6 @@ const estados = [
   'PA', 'PB', 'PR', 'PE', 'PI', 'RJ', 'RN', 'RS', 'RO', 'RR', 'SC', 'SP', 'SE', 'TO'
 ];
 
-const ramosAtividade = [
-  'Construção Civil',
-  'Tecnologia da Informação',
-  'Serviços de Limpeza',
-  'Manutenção',
-  'Consultoria',
-  'Fornecimento de Materiais',
-  'Outros'
-];
-
 export default function Clientes() {
   const [clientes, setClientes] = useState([]);
   const [openNovo, setOpenNovo] = useState(false);
@@ -77,7 +67,7 @@ export default function Clientes() {
     cnpj: '',
     cidade: '',
     estado: '',
-    ramo_atividade: '',
+    cnae: '',
   });
   const [loading, setLoading] = useState(false);
   const [anchorEl, setAnchorEl] = useState(null);
@@ -113,10 +103,17 @@ export default function Clientes() {
                 cliente.estado === filtros.estado
             );
         }
-        if (filtros.ramo_atividade) {
-            clientesFiltrados = clientesFiltrados.filter(cliente =>
-                cliente.ramos_atividade.includes(filtros.ramo_atividade)
-            );
+        if (filtros.cnae) {
+            clientesFiltrados = clientesFiltrados.filter(cliente => {
+                // Verificar se o cliente tem CNAEs
+                if (cliente.cnaes && cliente.cnaes.length > 0) {
+                    return cliente.cnaes.some(cnae => 
+                        cnae.codigo.includes(filtros.cnae) || 
+                        cnae.descricao.toLowerCase().includes(filtros.cnae.toLowerCase())
+                    );
+                }
+                return false;
+            });
         }
 
         setClientes(clientesFiltrados);
@@ -169,7 +166,7 @@ export default function Clientes() {
       cnpj: '',
       cidade: '',
       estado: '',
-      ramo_atividade: '',
+      cnae: '',
     });
     carregarClientes();
   };
@@ -186,107 +183,97 @@ export default function Clientes() {
     setAnchorEl(null);
   };
 
-
   const renderFiltros = () => (
-    <Paper 
-      elevation={0} 
-      sx={{ 
-        p: { xs: 2, sm: 3 }, 
-        mb: 3,
-        borderRadius: 2,
-        border: '1px solid',
-        borderColor: 'divider'
-      }}
-    >
-      <Box sx={{ display: 'flex', alignItems: 'center', mb: 2 }}>
-        <FilterListIcon sx={{ mr: 1, color: 'primary.main' }} />
-        <Typography variant="h6" component="h2" sx={{ color: 'primary.main' }}>
-          Filtros
-        </Typography>
-      </Box>
-
-      <Grid container spacing={2}>
-        <Grid item xs={12} sm={6} md={4}>
-          <TextField
-            fullWidth
-            label="Razão Social"
-            value={filtros.razao_social}
-            onChange={(e) => handleFiltroChange('razao_social', e.target.value)}
-          />
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={4}>
-          <TextField
-            fullWidth
-            label="CNPJ"
-            value={filtros.cnpj}
-            onChange={(e) => handleFiltroChange('cnpj', e.target.value)}
-          />
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={4}>
-          <TextField
-            fullWidth
-            label="Cidade"
-            value={filtros.cidade}
-            onChange={(e) => handleFiltroChange('cidade', e.target.value)}
-          />
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={4}>
-          <FormControl fullWidth>
-            <InputLabel>Estado</InputLabel>
-            <Select
-              value={filtros.estado}
-              label="Estado"
-              onChange={(e) => handleFiltroChange('estado', e.target.value)}
+    <Collapse in={showFilters}>
+      <Paper sx={{ p: 2, mb: 2 }}>
+        <Grid container spacing={2} alignItems="center">
+          <Grid item xs={12} sm={6} md={3}>
+            <TextField
+              fullWidth
+              label="Razão Social"
+              name="razao_social"
+              value={filtros.razao_social}
+              onChange={(e) => handleFiltroChange('razao_social', e.target.value)}
+              variant="outlined"
+              size="small"
+            />
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <TextField
+              fullWidth
+              label="CNPJ"
+              name="cnpj"
+              value={filtros.cnpj}
+              onChange={(e) => handleFiltroChange('cnpj', e.target.value)}
+              variant="outlined"
+              size="small"
+            />
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <TextField
+              fullWidth
+              label="Cidade"
+              name="cidade"
+              value={filtros.cidade}
+              onChange={(e) => handleFiltroChange('cidade', e.target.value)}
+              variant="outlined"
+              size="small"
+            />
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <FormControl fullWidth size="small">
+              <InputLabel>Estado</InputLabel>
+              <Select
+                name="estado"
+                value={filtros.estado}
+                onChange={(e) => handleFiltroChange('estado', e.target.value)}
+                label="Estado"
+              >
+                <MenuItem value="">Todos</MenuItem>
+                {estados.map((estado) => (
+                  <MenuItem key={estado} value={estado}>
+                    {estado}
+                  </MenuItem>
+                ))}
+              </Select>
+            </FormControl>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <TextField
+              fullWidth
+              label="CNAE (código ou descrição)"
+              name="cnae"
+              value={filtros.cnae}
+              onChange={(e) => handleFiltroChange('cnae', e.target.value)}
+              variant="outlined"
+              size="small"
+            />
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Button
+              fullWidth
+              variant="outlined"
+              color="primary"
+              onClick={limparFiltros}
+              startIcon={<ClearIcon />}
             >
-              <MenuItem value="">Todos</MenuItem>
-              {estados.map((estado) => (
-                <MenuItem key={estado} value={estado}>
-                  {estado}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
-        </Grid>
-
-        <Grid item xs={12} sm={6} md={4}>
-          <FormControl fullWidth>
-            <InputLabel>Ramo de Atividade</InputLabel>
-            <Select
-              value={filtros.ramo_atividade}
-              label="Ramo de Atividade"
-              onChange={(e) => handleFiltroChange('ramo_atividade', e.target.value)}
+              Limpar Filtros
+            </Button>
+          </Grid>
+          <Grid item xs={12} sm={6} md={3}>
+            <Button
+              fullWidth
+              variant="contained"
+              color="primary"
+              onClick={aplicarFiltros}
+              startIcon={<SearchIcon />}
             >
-              <MenuItem value="">Todos</MenuItem>
-              {ramosAtividade.map((ramo) => (
-                <MenuItem key={ramo} value={ramo}>
-                  {ramo}
-                </MenuItem>
-              ))}
-            </Select>
-          </FormControl>
+              Aplicar Filtros
+            </Button>
+          </Grid>
         </Grid>
-
-        <Grid item xs={12} sx={{ display: 'flex', gap: 2, justifyContent: 'flex-end' }}>
-          <Button
-            variant="outlined"
-            startIcon={<ClearIcon />}
-            onClick={limparFiltros}
-          >
-            Limpar
-          </Button>
-          <Button
-            variant="contained"
-            startIcon={<SearchIcon />}
-            onClick={aplicarFiltros}
-          >
-            Filtrar
-          </Button>
-        </Grid>
-      </Grid>
-    </Paper>
+      </Paper>
+    </Collapse>
   );
 
   const MobileView = () => (
@@ -319,9 +306,19 @@ export default function Clientes() {
                 {cliente.cidade} - {cliente.estado}
               </Typography>
               <Box sx={{ mt: 2, display: 'flex', gap: 1, flexWrap: 'wrap' }}>
-                {cliente.ramos_atividade.map((ramo, index) => (
-                  <Chip key={index} label={ramo} size="small" />
-                ))}
+                {cliente.cnaes && cliente.cnaes.length > 0 ? (
+                  cliente.cnaes.map((cnae, index) => (
+                    <Chip 
+                      key={index} 
+                      label={`${cnae.codigo} - ${cnae.descricao}`} 
+                      size="small"
+                      color={cnae.tipo === 'principal' ? 'primary' : 'default'}
+                      variant={cnae.tipo === 'principal' ? 'filled' : 'outlined'}
+                    />
+                  ))
+                ) : (
+                  <Chip label="Sem CNAEs cadastrados" size="small" />
+                )}
               </Box>
               <Box sx={{ mt: 2, display: 'flex', gap: 1, justifyContent: 'flex-end' }}>
                 <IconButton size="small" onClick={() => handleView(cliente)}>
@@ -356,79 +353,100 @@ export default function Clientes() {
   );
 
   const DesktopView = () => (
-    <TableContainer component={Paper}>
+    <TableContainer component={Paper} sx={{ mt: 2, borderRadius: 2, boxShadow: 2 }}>
       <Table>
         <TableHead>
-          <TableRow>
-            <TableCell>Razão Social</TableCell>
-            <TableCell>CNPJ</TableCell>
-            <TableCell>Cidade</TableCell>
-            <TableCell>Estado</TableCell>
-            <TableCell>Ramos de Atividade</TableCell>
-            <TableCell align="right">Ações</TableCell>
+          <TableRow sx={{ bgcolor: 'primary.light' }}>
+            <TableCell sx={{ color: 'primary.contrastText', fontWeight: 'bold' }}>Razão Social</TableCell>
+            <TableCell sx={{ color: 'primary.contrastText', fontWeight: 'bold' }}>CNPJ</TableCell>
+            <TableCell sx={{ color: 'primary.contrastText', fontWeight: 'bold' }}>Cidade/UF</TableCell>
+            <TableCell sx={{ color: 'primary.contrastText', fontWeight: 'bold' }}>CNAEs</TableCell>
+            <TableCell sx={{ color: 'primary.contrastText', fontWeight: 'bold' }} align="center">Ações</TableCell>
           </TableRow>
         </TableHead>
         <TableBody>
           {loading ? (
             Array.from(new Array(5)).map((_, index) => (
               <TableRow key={index}>
-                <TableCell><Skeleton variant="text" /></TableCell>
-                <TableCell><Skeleton variant="text" /></TableCell>
-                <TableCell><Skeleton variant="text" /></TableCell>
-                <TableCell><Skeleton variant="text" /></TableCell>
-                <TableCell><Skeleton variant="text" /></TableCell>
-                <TableCell align="right"><Skeleton variant="text" /></TableCell>
+                <TableCell><Skeleton /></TableCell>
+                <TableCell><Skeleton /></TableCell>
+                <TableCell><Skeleton /></TableCell>
+                <TableCell><Skeleton /></TableCell>
+                <TableCell><Skeleton /></TableCell>
               </TableRow>
             ))
-          ) : clientes.length > 0 ? (
+          ) : clientes.length === 0 ? (
+            <TableRow>
+              <TableCell colSpan={5} align="center">
+                Nenhum cliente encontrado
+              </TableCell>
+            </TableRow>
+          ) : (
             clientes.map((cliente) => (
-              <TableRow key={cliente.id}>
+              <TableRow key={cliente.id} hover>
                 <TableCell>{cliente.razao_social}</TableCell>
                 <TableCell>{cliente.cnpj}</TableCell>
-                <TableCell>{cliente.cidade}</TableCell>
-                <TableCell>{cliente.estado}</TableCell>
+                <TableCell>{cliente.cidade}/{cliente.estado}</TableCell>
                 <TableCell>
-                  <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
-                    {cliente.ramos_atividade.map((ramo, index) => (
-                      <Chip key={index} label={ramo} size="small" />
-                    ))}
-                  </Box>
+                  {cliente.cnaes && cliente.cnaes.length > 0 ? (
+                    <Tooltip title={
+                      <Box>
+                        <Typography variant="caption" fontWeight="bold">CNAEs:</Typography>
+                        {cliente.cnaes.map((cnae, i) => (
+                          <Typography key={i} variant="caption" display="block">
+                            {cnae.tipo === 'principal' ? '• Principal: ' : '• Secundário: '}
+                            {cnae.codigo} - {cnae.descricao}
+                          </Typography>
+                        ))}
+                      </Box>
+                    }>
+                      <Chip 
+                        size="small" 
+                        label={`${cliente.cnaes.length} CNAE(s)`} 
+                        color="primary" 
+                        variant="outlined"
+                      />
+                    </Tooltip>
+                  ) : (
+                    <Chip 
+                      size="small" 
+                      label="Sem CNAEs" 
+                      color="default" 
+                      variant="outlined"
+                    />
+                  )}
                 </TableCell>
-                <TableCell align="right">
+                <TableCell align="center">
                   <Tooltip title="Visualizar">
-                    <IconButton size="small" onClick={() => handleView(cliente)}>
-                      <VisibilityIcon />
+                    <IconButton
+                      size="small"
+                      color="info"
+                      onClick={() => handleView(cliente)}
+                    >
+                      <VisibilityIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
                   <Tooltip title="Editar">
-                    <IconButton size="small" onClick={() => handleEdit(cliente)}>
-                      <EditIcon />
+                    <IconButton
+                      size="small"
+                      color="primary"
+                      onClick={() => handleEdit(cliente)}
+                    >
+                      <EditIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
                   <Tooltip title="Excluir">
-                    <IconButton size="small" onClick={() => handleDelete(cliente.id)}>
-                      <DeleteIcon />
+                    <IconButton
+                      size="small"
+                      color="error"
+                      onClick={() => handleDelete(cliente.id)}
+                    >
+                      <DeleteIcon fontSize="small" />
                     </IconButton>
                   </Tooltip>
                 </TableCell>
               </TableRow>
             ))
-          ) : (
-            <TableRow>
-              <TableCell colSpan={6} align="center" sx={{ py: 3 }}>
-                <Typography color="text.secondary" sx={{ mb: 1 }}>
-                  Nenhum cliente encontrado
-                </Typography>
-                <Button 
-                  variant="outlined" 
-                  startIcon={<RefreshIcon />} 
-                  onClick={carregarClientes}
-                  size="small"
-                >
-                  Atualizar
-                </Button>
-              </TableCell>
-            </TableRow>
           )}
         </TableBody>
       </Table>

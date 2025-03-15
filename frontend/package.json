@@ -15,7 +15,8 @@
     "reconstruir-sistema-requisitos": "node scripts/run-sql.js src/sql/reconstruir_sistema_requisitos.sql",
     "testar-requisitos": "node scripts/run-sql.js src/sql/testar_requisitos.sql",
     "corrigir-exclusao-documentos": "node scripts/run-sql.js src/sql/corrigir_exclusao_documentos.sql",
-    "verificar-processamento-requisitos": "node scripts/run-sql.js src/sql/verificar_processamento_requisitos.sql"
+    "verificar-processamento-requisitos": "node scripts/run-sql.js src/sql/verificar_processamento_requisitos.sql",
+    "atualizar-clientes-cnaes": "node scripts/run-sql.js src/sql/atualizar_tabela_clientes_cnaes.sql"
   },
   "dependencies": {
     "@emotion/react": "^11.11.4",
