@@ -8,6 +8,7 @@ import CssBaseline from '@mui/material/CssBaseline';
 import { LocalizationProvider } from '@mui/x-date-pickers';
 import { AdapterDayjs } from '@mui/x-date-pickers/AdapterDayjs';
 import 'dayjs/locale/pt-br';
+import TestAuth from './TestAuth';
 
 // Tema personalizado para o Material UI
 const theme = createTheme({

@@ -61,6 +61,10 @@ export default function Layout() {
     fetchUser();
   }, []);
 
+  // Verificar se usuário é admin
+  const isAdmin = user && (user.email === 'admin@licitagora.com' || user.app_metadata?.role === 'admin');
+
+  // Menu principal
   const menuItems = [
     { text: 'Dashboard', icon: <HomeIcon />, path: '/home' },
     { text: 'Clientes', icon: <BusinessIcon />, path: '/clientes' },
@@ -69,7 +73,12 @@ export default function Layout() {
     { text: 'Fechamento', icon: <AssignmentTurnedInIcon />, path: '/fechamento' },
     { text: 'Financeiro', icon: <AccountBalanceIcon />, path: '/financeiro' },
     { text: 'Prazos', icon: <ScheduleIcon />, path: '/prazos' },
-    { text: 'Relatórios', icon: <AssessmentIcon />, path: '/relatorios' },
+    { text: 'Relatórios', icon: <AssessmentIcon />, path: '/relatorios' }
+  ];
+
+  // Menu de administração (apenas para admins)
+  const adminMenuItems = [
+    { text: 'Gerenciar Franquias', icon: <BusinessIcon />, path: '/franquias' }
   ];
 
   const handleDrawerToggle = () => {
@@ -197,6 +206,69 @@ export default function Layout() {
                 />
               </ListItem>
             ))}
+
+            {/* Menu de administração */}
+            {isAdmin && (
+              <>
+                <Divider sx={{ my: 2 }} />
+                <Typography
+                  variant="overline"
+                  sx={{
+                    px: 3,
+                    color: 'text.secondary',
+                    fontWeight: 'bold',
+                  }}
+                >
+                  Administração
+                </Typography>
+                
+                {adminMenuItems.map((item) => (
+                  <ListItem
+                    button
+                    key={item.text}
+                    onClick={() => {
+                      navigate(item.path);
+                      if (isMobile) setOpen(false);
+                    }}
+                    selected={location.pathname === item.path}
+                    sx={{
+                      borderRadius: 2,
+                      mb: 1,
+                      transition: 'all 0.2s ease-in-out',
+                      '&.Mui-selected': {
+                        backgroundColor: 'secondary.light',
+                        color: 'secondary.contrastText',
+                        '&:hover': {
+                          backgroundColor: 'secondary.light',
+                        },
+                        '& .MuiListItemIcon-root': {
+                          color: 'secondary.contrastText',
+                        },
+                      },
+                      '&:hover': {
+                        backgroundColor: 'action.hover',
+                        transform: 'translateX(4px)',
+                      },
+                    }}
+                  >
+                    <ListItemIcon
+                      sx={{
+                        minWidth: 40,
+                        color: location.pathname === item.path ? 'secondary.contrastText' : 'inherit',
+                      }}
+                    >
+                      {item.icon}
+                    </ListItemIcon>
+                    <ListItemText
+                      primary={item.text}
+                      primaryTypographyProps={{
+                        fontWeight: location.pathname === item.path ? 600 : 400,
+                      }}
+                    />
+                  </ListItem>
+                ))}
+              </>
+            )}
           </List>
           
           <Box>

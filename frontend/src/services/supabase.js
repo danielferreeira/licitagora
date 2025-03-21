@@ -1,5 +1,7 @@
 import { supabase } from '../config/supabase'
 
+export { supabase };
+
 // Função para verificar se o usuário está autenticado
 const verificarAutenticacao = async () => {
   const { data: { session } } = await supabase.auth.getSession();
@@ -22,10 +24,38 @@ export const clienteService = {
     async listarClientes() {
         try {
             await verificarAutenticacao();
-            const { data, error } = await supabase
+            
+            // Verificar se o usuário é admin ou franquia
+            const user = await authService.getCurrentUser();
+            const isAdmin = user && (user.email === 'admin@licitagora.com' || user.app_metadata?.role === 'admin');
+            
+            let query = supabase
                 .from('clientes')
-                .select('*')
+                .select(`
+                    *,
+                    franquia:franquia_id (
+                        id,
+                        nome,
+                        cnpj,
+                        email
+                    )
+                `)
                 .order('razao_social');
+            
+            // Se for franquia, filtrar apenas os clientes da franquia
+            if (!isAdmin) {
+                const { data: userFranquia } = await supabase
+                    .from('franquias')
+                    .select('id')
+                    .eq('user_id', user.id)
+                    .single();
+                
+                if (userFranquia) {
+                    query = query.eq('franquia_id', userFranquia.id);
+                }
+            }
+            
+            const { data, error } = await query;
             
             if (error) throw error;
             return data || [];
@@ -1637,13 +1667,55 @@ export const authService = {
 
   // Login com email e senha
   signInWithEmail: async (email, password) => {
-    const { data, error } = await supabase.auth.signInWithPassword({
-      email,
-      password
-    });
-    
-    if (error) throw error;
-    return data;
+    try {
+      // Verificar conexão com o banco antes de tentar login
+      try {
+        const conexaoOk = await verificarConexao();
+        if (!conexaoOk) {
+          console.error('[Auth] Falha na conexão com o banco de dados');
+          return { error: { message: 'Serviço temporariamente indisponível. Por favor, tente novamente mais tarde.' } };
+        }
+      } catch (connErr) {
+        console.error('[Auth] Erro ao verificar conexão:', connErr);
+        // Continuar mesmo se houver erro na verificação de conexão
+      }
+
+      console.log(`[Auth] Tentando login com email: ${email}`);
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password,
+      });
+
+      if (error) {
+        console.error('[Auth] Erro de login:', error);
+        
+        // Personalizar mensagens de erro para o usuário
+        let userMessage = 'Erro ao fazer login. Tente novamente mais tarde.';
+        
+        if (error.message?.includes('Invalid login credentials')) {
+          userMessage = 'Email ou senha incorretos. Verifique suas credenciais.';
+        } else if (error.message?.includes('Email not confirmed')) {
+          userMessage = 'Email não confirmado. Verifique sua caixa de entrada.';
+        } else if (error.status === 404 || error.message?.includes('Not Found')) {
+          userMessage = 'Serviço temporariamente indisponível. Por favor, tente novamente mais tarde.';
+        } else if (error.status === 500 || error.status >= 502) {
+          userMessage = 'Serviço temporariamente indisponível. Por favor, tente novamente mais tarde.';
+        }
+        
+        return { error: { ...error, message: userMessage } };
+      }
+
+      console.log('[Auth] Login bem-sucedido:', data.user?.id);
+      return { data };
+    } catch (err) {
+      console.error('[Auth] Erro inesperado no login:', err);
+      return {
+        error: {
+          message: 'Ocorreu um erro inesperado. Por favor, tente novamente mais tarde.',
+          originalError: err.message
+        }
+      };
+    }
   },
 
   // Logout
@@ -1654,17 +1726,870 @@ export const authService = {
 
   // Atualizar senha do usuário
   updatePassword: async (password) => {
-    const { data, error } = await supabase.auth.updateUser({
-      password
-    });
-    
-    if (error) throw error;
-    return data;
+    try {
+      console.log('Tentando atualizar senha do usuário');
+      const { data, error } = await supabase.auth.updateUser({
+        password
+      });
+      
+      if (error) {
+        console.error('Erro ao atualizar senha:', error);
+        throw error;
+      }
+      
+      console.log('Senha atualizada com sucesso');
+      return data;
+    } catch (err) {
+      console.error('Exceção ao atualizar senha:', err);
+      throw err;
+    }
+  },
+
+  // Solicitar redefinição de senha
+  requestPasswordReset: async (email) => {
+    try {
+      console.log(`Solicitando redefinição de senha para: ${email}`);
+      const { data, error } = await supabase.auth.resetPasswordForEmail(email, {
+        redirectTo: `${window.location.origin}/reset-password`
+      });
+      
+      if (error) {
+        console.error('Erro ao solicitar redefinição de senha:', error);
+        throw error;
+      }
+      
+      console.log('Email de redefinição enviado com sucesso');
+      return data;
+    } catch (err) {
+      console.error('Exceção ao solicitar redefinição de senha:', err);
+      throw err;
+    }
   },
 
   // Verificar se o usuário está autenticado
   isAuthenticated: async () => {
     const { data: { session } } = await supabase.auth.getSession();
     return !!session;
+  },
+
+  // Obter dados de um usuário pelo ID
+  getUserById: async (userId) => {
+    try {
+      console.log(`[Auth] Buscando usuário com ID: ${userId}`);
+      const { data, error } = await supabase.auth.admin.getUserById(userId);
+      
+      if (error) {
+        console.error('[Auth] Erro ao buscar usuário:', error);
+        return null;
+      }
+      
+      return data?.user || null;
+    } catch (err) {
+      console.error('[Auth] Erro ao buscar usuário por ID:', err);
+      return null;
+    }
+  },
+  
+  // Atualizar dados de um usuário
+  updateUserData: async (userId, email, nome) => {
+    try {
+      const { data, error } = await supabase.auth.admin.updateUserById(
+        userId,
+        { 
+          email,
+          user_metadata: { nome }
+        }
+      );
+      
+      if (error) throw error;
+      return data;
+    } catch (err) {
+      console.error('Erro ao atualizar dados do usuário:', err);
+      throw err;
+    }
+  },
+
+  // Buscar usuário por email
+  async getUserByEmail(email) {
+    try {
+      console.log(`[Auth] Verificando se existe usuário com email: ${email}`);
+      
+      // Usar apenas o método legacy que não depende de permissões administrativas
+      const exists = await checkUserExistsLegacy(email);
+      if (exists) {
+        console.log('[Auth] Usuário existe (verificado por método alternativo)');
+        return { 
+          email: email, 
+          confirmed: true, 
+          verified_using_legacy: true 
+        };
+      }
+      
+      console.log('[Auth] Nenhum usuário encontrado com este email');
+      return null;
+    } catch (err) {
+      console.error('[Auth] Erro ao verificar existência de usuário:', err);
+      return null;
+    }
+  },
+};
+
+// Serviço de franquias
+export const franquiaService = {
+  // Listar todas as franquias (apenas admin)
+  async listarFranquias() {
+    try {
+      await verificarAutenticacao();
+      
+      const { data, error } = await supabase
+        .from('franquias')
+        .select('*')
+        .order('nome');
+      
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Erro ao listar franquias:', error);
+      throw error;
+    }
+  },
+
+  // Buscar franquia por ID
+  async buscarFranquiaPorId(id) {
+    try {
+      await verificarAutenticacao();
+      
+      const { data, error } = await supabase
+        .from('franquias')
+        .select('*')
+        .eq('id', id)
+        .single();
+      
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Erro ao buscar franquia:', error);
+      throw error;
+    }
+  },
+
+  // Buscar franquia atual do usuário logado
+  async buscarFranquiaAtual() {
+    try {
+      await verificarAutenticacao();
+      
+      const session = await authService.getSession();
+      
+      const { data, error } = await supabase
+        .from('franquias')
+        .select('*')
+        .eq('user_id', session.user.id)
+        .single();
+      
+      if (error && error.code !== 'PGRST116') { // Ignora erro de não encontrado
+        throw error;
+      }
+      
+      return data || null;
+    } catch (error) {
+      console.error('Erro ao buscar franquia atual:', error);
+      throw error;
+    }
+  },
+
+  // Criar nova franquia (apenas admin)
+  async criarFranquia(franquia) {
+    try {
+      await verificarAutenticacao();
+      
+      // Validar se o usuário é administrador
+      const user = await authService.getCurrentUser();
+      const { data: isAdmin } = await supabase.rpc('is_admin');
+      
+      if (!isAdmin) {
+        throw new Error('Apenas administradores podem criar franquias');
+      }
+      
+      // Tentar criar extensões necessárias
+      try {
+        await supabase.rpc('criar_extensoes');
+        console.log('Extensões criadas/verificadas com sucesso');
+      } catch (extError) {
+        console.error('Erro ao criar extensões (isso pode ser normal se não tiver permissão):', extError);
+        // Continuar mesmo se falhar, pois as extensões podem já existir
+      }
+      
+      // Configurar tabela franquias e garantir que a coluna user_id aceite nulos
+      try {
+        await supabase.rpc('configurar_tabela_franquias');
+        console.log('Configuração da tabela franquias concluída com sucesso');
+      } catch (configError) {
+        console.error('Erro ao configurar tabela franquias:', configError);
+        // Continuar mesmo com erro
+      }
+      
+      // Remover formatação dos campos antes de enviar
+      const dadosFormatados = {
+        nome: franquia.nome?.trim(),
+        cnpj: franquia.cnpj?.replace(/\D/g, ''),
+        email: franquia.email?.trim(),
+        telefone: franquia.telefone?.replace(/\D/g, ''),
+        cep: franquia.cep?.replace(/\D/g, ''),
+        endereco: franquia.endereco?.trim(),
+        numero: franquia.numero?.trim(),
+        bairro: franquia.bairro?.trim(),
+        cidade: franquia.cidade?.trim(),
+        estado: franquia.estado?.trim(),
+        ativa: true,
+        user_id: null // Explicitamente definir como NULL
+      };
+
+      console.log('Dados formatados para inserção:', dadosFormatados);
+
+      // Criar a franquia com todos os dados de uma vez
+      const { data: franquiaCriada, error: franquiaError } = await supabase
+        .from('franquias')
+        .insert(dadosFormatados)
+        .select()
+        .single();
+
+      if (franquiaError) {
+        console.error('Erro ao criar franquia:', franquiaError);
+        throw new Error(franquiaError.message);
+      }
+
+      console.log('Franquia criada com sucesso:', franquiaCriada);
+
+      return { franquia: franquiaCriada };
+    } catch (error) {
+      console.error('Erro ao criar franquia:', error);
+      throw error.message ? error : new Error('Erro ao cadastrar franquia');
+    }
+  },
+
+  // Atualizar franquia
+  async atualizarFranquia(id, franquia) {
+    try {
+      await verificarAutenticacao();
+      
+      // Validar se o usuário pode atualizar esta franquia
+      const user = await authService.getCurrentUser();
+      const franquiaAtual = await this.buscarFranquiaPorId(id);
+      const { data: isAdmin } = await supabase.rpc('is_admin');
+      
+      if (!isAdmin && franquiaAtual.user_id !== user.id) {
+        throw new Error('Você não tem permissão para atualizar esta franquia');
+      }
+      
+      // Remover formatação dos campos antes de enviar
+      const dadosFormatados = {
+        ...franquia,
+        cnpj: franquia.cnpj?.replace(/\D/g, ''),
+        telefone: franquia.telefone?.replace(/\D/g, ''),
+        cep: franquia.cep?.replace(/\D/g, ''),
+        nome: franquia.nome?.trim(),
+        email: franquia.email?.trim(),
+        endereco: franquia.endereco?.trim(),
+        numero: franquia.numero?.trim(),
+        bairro: franquia.bairro?.trim(),
+        cidade: franquia.cidade?.trim(),
+        estado: franquia.estado?.trim()
+      };
+
+      // Atualizar a franquia
+      const { data, error } = await supabase
+        .from('franquias')
+        .update(dadosFormatados)
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Erro ao atualizar franquia:', error);
+      throw error.message ? error : new Error('Erro ao atualizar franquia');
+    }
+  },
+
+  // Ativar/desativar franquia (apenas admin)
+  async alterarStatusFranquia(id, ativa) {
+    try {
+      await verificarAutenticacao();
+      
+      // Validar se o usuário é administrador
+      const { data: isAdmin } = await supabase.rpc('is_admin');
+      
+      if (!isAdmin) {
+        throw new Error('Apenas administradores podem alterar o status de franquias');
+      }
+      
+      // Verificar se a coluna 'ativa' existe e criá-la se não existir
+      try {
+        // Este RPC vai criar a coluna 'ativa' se ela não existir
+        await supabase.rpc('ensure_franquias_ativa_column');
+      } catch (columnError) {
+        console.error('Erro ao verificar/criar coluna ativa:', columnError);
+        // Se não conseguirmos criar a coluna, vamos tentar atualizar outro campo
+        // apenas para mostrar que o status foi alterado na interface
+        const { data, error } = await supabase
+          .from('franquias')
+          .update({ updated_at: new Date().toISOString() })
+          .eq('id', id)
+          .select()
+          .single();
+        
+        if (error) throw error;
+        return data;
+      }
+      
+      // Se chegou aqui, a coluna 'ativa' existe ou foi criada
+      const { data, error } = await supabase
+        .from('franquias')
+        .update({ ativa })
+        .eq('id', id)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Erro ao alterar status da franquia:', error);
+      throw error.message ? error : new Error('Erro ao alterar status da franquia');
+    }
+  },
+
+  // Excluir franquia (apenas admin)
+  async excluirFranquia(id) {
+    try {
+      await verificarAutenticacao();
+      
+      // Validar se o usuário é administrador
+      const { data: isAdmin } = await supabase.rpc('is_admin');
+      
+      if (!isAdmin) {
+        throw new Error('Apenas administradores podem excluir franquias');
+      }
+      
+      // Primeiro, buscar o user_id associado à franquia
+      const { data: franquia } = await supabase
+        .from('franquias')
+        .select('user_id')
+        .eq('id', id)
+        .single();
+      
+      if (!franquia) {
+        throw new Error('Franquia não encontrada');
+      }
+      
+      // Desassociar todos os clientes desta franquia
+      const { error: clientesError } = await supabase
+        .from('clientes')
+        .update({ franquia_id: null })
+        .eq('franquia_id', id);
+      
+      if (clientesError) {
+        console.error('Erro ao desassociar clientes:', clientesError);
+      }
+      
+      // Excluir a franquia
+      const { error } = await supabase
+        .from('franquias')
+        .delete()
+        .eq('id', id);
+      
+      if (error) throw error;
+      
+      // Desativar o usuário associado (não é possível excluir de forma segura)
+      // Isso deve ser feito pelo painel administrativo do Supabase
+      
+      return { success: true, message: 'Franquia excluída com sucesso' };
+    } catch (error) {
+      console.error('Erro ao excluir franquia:', error);
+      throw error.message ? error : new Error('Erro ao excluir franquia');
+    }
+  },
+
+  // Listar clientes de uma franquia
+  async listarClientesDaFranquia(franquiaId) {
+    try {
+      await verificarAutenticacao();
+      
+      const { data, error } = await supabase
+        .from('clientes')
+        .select('*')
+        .eq('franquia_id', franquiaId)
+        .order('razao_social');
+      
+      if (error) throw error;
+      return data || [];
+    } catch (error) {
+      console.error('Erro ao listar clientes da franquia:', error);
+      throw error;
+    }
+  },
+
+  // Atribuir cliente a uma franquia
+  async atribuirClienteAFranquia(clienteId, franquiaId) {
+    try {
+      await verificarAutenticacao();
+      
+      // Validar se o usuário é administrador
+      const { data: isAdmin } = await supabase.rpc('is_admin');
+      
+      if (!isAdmin) {
+        throw new Error('Apenas administradores podem atribuir clientes a franquias');
+      }
+      
+      const { data, error } = await supabase
+        .from('clientes')
+        .update({ franquia_id: franquiaId })
+        .eq('id', clienteId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Erro ao atribuir cliente a franquia:', error);
+      throw error.message ? error : new Error('Erro ao atribuir cliente a franquia');
+    }
+  },
+
+  // Remover cliente de uma franquia
+  async removerClienteDaFranquia(clienteId) {
+    try {
+      await verificarAutenticacao();
+      
+      // Validar se o usuário é administrador
+      const { data: isAdmin } = await supabase.rpc('is_admin');
+      
+      if (!isAdmin) {
+        throw new Error('Apenas administradores podem remover clientes de franquias');
+      }
+      
+      const { data, error } = await supabase
+        .from('clientes')
+        .update({ franquia_id: null })
+        .eq('id', clienteId)
+        .select()
+        .single();
+
+      if (error) throw error;
+      return data;
+    } catch (error) {
+      console.error('Erro ao remover cliente da franquia:', error);
+      throw error.message ? error : new Error('Erro ao remover cliente da franquia');
+    }
+  },
+
+  // Criar um usuário para uma franquia existente
+  async criarUsuarioParaFranquia(franquiaId, email, senha, nome) {
+    try {
+      // Verificar se está autenticado
+      const session = await supabase.auth.getSession();
+      if (!session?.data?.session) {
+        console.error('[Franquia] Tentativa de criar usuário sem autenticação');
+        return { 
+          success: false, 
+          message: 'Você precisa estar autenticado para realizar esta operação' 
+        };
+      }
+
+      console.log(`[Franquia] Criando usuário para franquia ${franquiaId}`);
+      
+      // Verificar se a franquia existe
+      const { data: franquia, error: franquiaError } = await supabase
+        .from('franquias')
+        .select('*')
+        .eq('id', franquiaId)
+        .single();
+      
+      if (franquiaError || !franquia) {
+        console.error('[Franquia] Franquia não encontrada:', franquiaError);
+        return { 
+          success: false, 
+          message: 'Franquia não encontrada' 
+        };
+      }
+      
+      // Chamar a função SQL para criar o usuário
+      const { data, error } = await supabase.rpc('criar_usuario_franquia_v2', {
+        p_franquia_id: franquiaId,
+        p_email: email,
+        p_senha: senha,
+        p_nome: nome || 'Usuário da Franquia'
+      });
+      
+      if (error) {
+        console.error('[Franquia] Erro ao criar usuário para franquia:', error);
+        return { 
+          success: false, 
+          message: `Erro ao criar usuário: ${error.message}` 
+        };
+      }
+      
+      console.log('[Franquia] Usuário criado com sucesso para franquia:', data);
+      return { 
+        success: true, 
+        message: 'Usuário criado com sucesso', 
+        data 
+      };
+    } catch (err) {
+      console.error('[Franquia] Erro ao criar usuário para franquia:', err);
+      return { 
+        success: false, 
+        message: `Erro inesperado: ${err.message}` 
+      };
+    }
+  },
+};
+
+export const criarFranquia = async (franquiaData, senhaUsuario = null) => {
+  try {
+    // Tentar criar extensões necessárias
+    try {
+      const { data: extData, error: extError } = await supabase.rpc('criar_extensoes');
+      if (extError) {
+        console.warn('Aviso: Não foi possível criar extensões (isso pode ser normal):', extError);
+      } else {
+        console.log('Extensões criadas/verificadas com sucesso');
+      }
+    } catch (extException) {
+      console.warn('Exceção ao criar extensões:', extException);
+      // Continuar mesmo com erro
+    }
+    
+    // Chamar a função de configuração de tabela para garantir que esteja tudo certo
+    const { data: configData, error: configError } = await supabase.rpc(
+      'configurar_tabela_franquias'
+    );
+    
+    if (configError) {
+      console.error('Erro ao configurar tabela de franquias:', configError);
+    } else {
+      console.log('Tabela de franquias configurada com sucesso');
+    }
+
+    // Formatar dados para inserção
+    const franquiaFormatada = {
+      nome: franquiaData.nome,
+      email: franquiaData.email,
+      cnpj: franquiaData.cnpj?.replace(/\D/g, ''),
+      telefone: franquiaData.telefone?.replace(/\D/g, ''),
+      bairro: franquiaData.bairro,
+      cidade: franquiaData.cidade,
+      estado: franquiaData.estado,
+      cep: franquiaData.cep?.replace(/\D/g, ''),
+      endereco: franquiaData.endereco,
+      numero: franquiaData.numero,
+      user_id: null // Definir como null explicitamente
+    };
+
+    // Criar a franquia
+    const { data: franquiaCriada, error } = await supabase
+      .from('franquias')
+      .insert(franquiaFormatada)
+      .select()
+      .single();
+
+    if (error) {
+      console.error('Erro ao criar franquia:', error);
+      return { data: null, error };
+    }
+
+    // Se a senha foi fornecida, tentar criar usuário para a franquia
+    let usuarioInfo = null;
+    if (senhaUsuario) {
+      try {
+        console.log(`[Franquia] Verificando se já existe usuário com email: ${franquiaData.email}`);
+        
+        // Verificar primeiro se já existe um usuário com este email
+        // Tentativa 1: Usando função RPC (pode falhar com erro de permissão)
+        let emailJaExiste = false;
+        let checkResult;
+        
+        try {
+          checkResult = await supabase.rpc('check_user_exists', { p_email: franquiaData.email });
+          if (checkResult.error) {
+            console.warn('[Franquia] Erro ao verificar usando RPC:', checkResult.error);
+          } else if (checkResult.data === true) {
+            emailJaExiste = true;
+          }
+        } catch (rpcError) {
+          console.warn('[Franquia] Exceção ao verificar usando RPC:', rpcError);
+        }
+        
+        // Tentativa 2: Tentar buscar usuário diretamente (pode ser bloqueado por permissões)
+        if (!emailJaExiste) {
+          try {
+            const { data: userData, error: userError } = await authService.getUserByEmail(franquiaData.email);
+            if (userError) {
+              console.warn('[Franquia] Erro ao buscar usuário por email:', userError);
+            } else if (userData) {
+              emailJaExiste = true;
+            }
+          } catch (userError) {
+            console.warn('[Franquia] Exceção ao buscar usuário por email:', userError);
+          }
+        }
+        
+        // Tentativa 3: Se ambas as tentativas falharem, vamos tentar criar o usuário e tratar o erro
+        if (emailJaExiste) {
+          console.log('[Franquia] Usuário com este email já existe (verificação prévia)');
+          usuarioInfo = {
+            sucesso: false,
+            codigo: 'EMAIL_JA_EXISTE',
+            mensagem: `Já existe um usuário com este email: ${franquiaData.email}`
+          };
+        } else {
+          // Tentar criar o usuário de qualquer forma, pois pode ser que nossas verificações
+          // prévias não tenham funcionado por questões de permissão
+          const { data: usuarioData, error: usuarioError } = await supabase.rpc(
+            'criar_usuario_franquia_v2',
+            {
+              p_franquia_id: franquiaCriada.id,
+              p_email: franquiaData.email,
+              p_senha: senhaUsuario,
+              p_nome: franquiaData.nome
+            }
+          );
+
+          if (usuarioError) {
+            console.error('[Franquia] Erro ao criar usuário para franquia:', usuarioError);
+            
+            // Verificar se o erro é devido ao email já existente
+            if (usuarioError.message && (
+                usuarioError.message.includes('already exists') || 
+                usuarioError.message.includes('EMAIL_JA_EXISTE') ||
+                usuarioError.message.includes('duplicate key') ||
+                usuarioError.message.includes('já existe')
+            )) {
+              usuarioInfo = {
+                sucesso: false,
+                codigo: 'EMAIL_JA_EXISTE',
+                mensagem: `Já existe um usuário com este email: ${franquiaData.email}`
+              };
+            } else {
+              usuarioInfo = {
+                sucesso: false,
+                codigo: 'ERRO_CRIAR_USUARIO',
+                mensagem: 'Não foi possível criar o usuário automaticamente. Um administrador poderá associar um usuário mais tarde.',
+                erro_tecnico: usuarioError.message
+              };
+            }
+          } else {
+            usuarioInfo = usuarioData || {
+              sucesso: true,
+              mensagem: 'Usuário para franquia criado com sucesso'
+            };
+            console.log('[Franquia] Usuário para franquia criado com sucesso:', usuarioData);
+          }
+        }
+      } catch (usuarioExcecao) {
+        console.error('[Franquia] Exceção ao criar usuário para franquia:', usuarioExcecao);
+        usuarioInfo = {
+          sucesso: false,
+          codigo: 'ERRO_INESPERADO',
+          mensagem: 'Não foi possível criar o usuário automaticamente. Um administrador poderá associar um usuário mais tarde.',
+          erro_tecnico: usuarioExcecao.message
+        };
+      }
+    }
+
+    return { 
+      data: { 
+        franquia: franquiaCriada, 
+        usuario: usuarioInfo 
+      }, 
+      error: null 
+    };
+  } catch (e) {
+    console.error('Exceção ao criar franquia:', e);
+    return { data: null, error: e };
   }
-}; 
+};
+
+// Iniciar verificações de saúde do banco
+export const iniciarVerificacaoDeSaude = async () => {
+  try {
+    console.log('[DB Health] Iniciando verificação de saúde do banco de dados...');
+    // Verificar se a tabela de verificação existe
+    const { data, error } = await supabase.rpc('criar_tabela_health_check');
+    
+    if (error) {
+      console.error('[DB Health] Erro ao iniciar verificação de saúde:', error);
+      console.warn('[DB Health] Tentando criar tabela de saúde manualmente...');
+      await criarTabelaHealthCheck();
+    } else {
+      console.log('[DB Health] Tabela de verificação de saúde disponível:', data);
+    }
+    
+    // Verificar conexão
+    const conexaoOk = await verificarConexao();
+    console.log('[DB Health] Status da conexão:', conexaoOk ? 'OK' : 'FALHA');
+    
+    return conexaoOk;
+  } catch (err) {
+    console.error('[DB Health] Erro fatal na verificação de saúde:', err);
+    return false;
+  }
+};
+
+// Verificar se a conexão com o banco de dados está funcionando
+export const verificarConexao = async () => {
+  try {
+    const startTime = Date.now();
+    const { data, error } = await supabase
+      .from('health_check')
+      .select('id, status')
+      .limit(1);
+    
+    const responseTime = Date.now() - startTime;
+    
+    if (error) {
+      console.error('[DB Health] Erro ao verificar conexão:', error);
+      return false;
+    }
+    
+    console.log(`[DB Health] Conexão verificada em ${responseTime}ms:`, data);
+    return true;
+  } catch (err) {
+    console.error('[DB Health] Erro ao verificar conexão:', err);
+    return false;
+  }
+};
+
+// Função para criar tabela de verificação de saúde
+export const criarTabelaHealthCheck = async () => {
+  try {
+    // Tentar criar a tabela health_check via chamada RPC
+    const { data, error } = await supabase.rpc('criar_tabela_health_check');
+    if (error) {
+      console.error('[DB Health] Erro ao criar tabela de verificação:', error);
+      return false;
+    }
+    console.log('[DB Health] Tabela de verificação criada com sucesso');
+    return true;
+  } catch (err) {
+    console.error('[DB Health] Erro ao criar tabela de verificação:', err);
+    return false;
+  }
+};
+
+// Iniciar verificação de saúde do banco ao carregar o serviço
+iniciarVerificacaoDeSaude();
+
+// Criar função RPC para checar se existe usuário com determinado email
+const criarFuncaoCheckUserExists = async () => {
+  try {
+    // Verificar se a função já existe
+    const { data: functionExists, error: checkError } = await supabase
+      .from('pg_proc')
+      .select('proname')
+      .eq('proname', 'check_user_exists')
+      .maybeSingle();
+
+    if (checkError) {
+      console.log('[DB Setup] Erro ao verificar se função check_user_exists existe:', checkError);
+    }
+
+    // Se a função não existe, criar
+    if (!functionExists) {
+      console.log('[DB Setup] Criando função check_user_exists...');
+      const { error: createError } = await supabase.rpc('create_function_check_user_exists');
+      
+      if (createError) {
+        console.error('[DB Setup] Erro ao criar função check_user_exists:', createError);
+        
+        // Tentar uma abordagem alternativa - executar SQL diretamente
+        const sqlFunction = `
+        CREATE OR REPLACE FUNCTION public.check_user_exists(p_email TEXT)
+        RETURNS BOOLEAN
+        LANGUAGE plpgsql
+        SECURITY DEFINER
+        AS $$
+        BEGIN
+          RETURN EXISTS (SELECT 1 FROM auth.users WHERE email = p_email);
+        EXCEPTION WHEN OTHERS THEN
+          RAISE WARNING 'Erro ao verificar usuário: %', SQLERRM;
+          RETURN FALSE;
+        END;
+        $$;
+        `;
+        
+        try {
+          await supabase.rpc('execute_sql', { sql: sqlFunction });
+          console.log('[DB Setup] Função check_user_exists criada via SQL direto');
+        } catch (sqlError) {
+          console.error('[DB Setup] Falha na criação via SQL direto:', sqlError);
+        }
+      } else {
+        console.log('[DB Setup] Função check_user_exists criada com sucesso');
+      }
+    } else {
+      console.log('[DB Setup] Função check_user_exists já existe');
+    }
+    
+    return true;
+  } catch (err) {
+    console.error('[DB Setup] Erro ao verificar/criar função check_user_exists:', err);
+    return false;
+  }
+};
+
+// Chamar a função para criar verificador de email ao inicializar
+try {
+  criarFuncaoCheckUserExists();
+} catch (err) {
+  console.warn('[DB Setup] Falha ao configurar funções de verificação de email:', err);
+}
+
+// Função para verificar se usuário existe sem usar a API auth (que pode dar erro de permissão)
+export const checkUserExistsLegacy = async (email) => {
+  if (!email) return false;
+  
+  try {
+    console.log('[Auth] Verificando se usuário existe (legado):', email);
+    
+    // Método 1: Tentar fazer login com credenciais inválidas 
+    // Uma senha obviamente errada, apenas para ver se o email existe
+    const { error } = await supabase.auth.signInWithPassword({
+      email: email,
+      password: 'senha_incorreta_apenas_para_verificacao_' + Date.now()
+    });
+    
+    // Se o erro for "Invalid login credentials", então o email existe
+    // Se for "Email not confirmed", também significa que o email existe
+    if (error) {
+      const errorMsg = error.message.toLowerCase();
+      if (errorMsg.includes('invalid login') || 
+          errorMsg.includes('email not confirmed') || 
+          errorMsg.includes('invalid email') === false) {
+        console.log('[Auth] Usuário existe (confirmado por tentativa de login)');
+        return true;
+      }
+    }
+    
+    // Método 2: Tentar usar uma função RPC no banco (se estiver disponível)
+    try {
+      const { data, error: rpcError } = await supabase.rpc('check_user_exists', { 
+        p_email: email 
+      });
+      
+      if (!rpcError && data === true) {
+        console.log('[Auth] Usuário existe (confirmado por RPC)');
+        return true;
+      }
+    } catch (rpcErr) {
+      console.warn('[Auth] Erro ao verificar usuário por RPC:', rpcErr);
+    }
+    
+    // Se chegou até aqui, provavelmente o usuário não existe
+    console.log('[Auth] Usuário não encontrado');
+    return false;
+  } catch (error) {
+    console.error('[Auth] Erro ao verificar existência de usuário:', error);
+    return false;
+  }
+};

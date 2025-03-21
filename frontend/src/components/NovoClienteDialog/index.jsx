@@ -27,9 +27,10 @@ import {
   LocationOn as LocationOnIcon,
   Domain as DomainIcon,
   Search as SearchIcon,
+  Store as StoreIcon,
 } from '@mui/icons-material';
 import { toast } from 'react-toastify';
-import { clienteService } from '../../services/supabase';
+import { clienteService, franquiaService, authService } from '../../services/supabase';
 import axios from 'axios';
 
 const estados = [
@@ -41,6 +42,9 @@ const estados = [
 export default function NovoClienteDialog({ open, onClose, onSuccess }) {
   const [loading, setLoading] = useState(false);
   const [buscandoCnpj, setBuscandoCnpj] = useState(false);
+  const [isAdmin, setIsAdmin] = useState(false);
+  const [franquias, setFranquias] = useState([]);
+  const [carregandoFranquias, setCarregandoFranquias] = useState(false);
   const [formData, setFormData] = useState({
     razao_social: '',
     cnpj: '',
@@ -52,9 +56,44 @@ export default function NovoClienteDialog({ open, onClose, onSuccess }) {
     bairro: '',
     cidade: '',
     estado: '',
-    cnaes: []
+    cnaes: [],
+    franquia_id: null
   });
   const [errors, setErrors] = useState({});
+
+  // Verificar se o usuário é admin ao carregar o componente
+  useEffect(() => {
+    const verificarAdmin = async () => {
+      try {
+        const { data } = await authService.isAdmin();
+        setIsAdmin(data);
+        
+        if (data) {
+          // Se for admin, carregar lista de franquias
+          carregarFranquias();
+        }
+      } catch (error) {
+        console.error('Erro ao verificar permissões:', error);
+        setIsAdmin(false);
+      }
+    };
+    
+    verificarAdmin();
+  }, []);
+
+  // Carregar lista de franquias (somente para admin)
+  const carregarFranquias = async () => {
+    setCarregandoFranquias(true);
+    try {
+      const data = await franquiaService.listarFranquias();
+      setFranquias(data);
+    } catch (error) {
+      console.error('Erro ao carregar franquias:', error);
+      toast.error('Não foi possível carregar a lista de franquias');
+    } finally {
+      setCarregandoFranquias(false);
+    }
+  };
 
   const validateForm = () => {
     const newErrors = {};
@@ -417,6 +456,35 @@ export default function NovoClienteDialog({ open, onClose, onSuccess }) {
                       variant="outlined"
                     />
                   </Grid>
+                  
+                  {/* Campo de Franquia (somente admin) */}
+                  {isAdmin && (
+                    <Grid item xs={12}>
+                      <FormControl fullWidth variant="outlined">
+                        <InputLabel id="franquia-label">Franquia</InputLabel>
+                        <Select
+                          labelId="franquia-label"
+                          name="franquia_id"
+                          value={formData.franquia_id || ''}
+                          onChange={handleChange}
+                          label="Franquia"
+                          startAdornment={<StoreIcon color="action" sx={{ mr: 1 }} />}
+                        >
+                          <MenuItem value="">
+                            <em>Nenhuma franquia</em>
+                          </MenuItem>
+                          {franquias.map((franquia) => (
+                            <MenuItem key={franquia.id} value={franquia.id}>
+                              {franquia.nome} - {franquia.cnpj ? franquia.cnpj.replace(/^(\d{2})(\d{3})(\d{3})(\d{4})(\d{2})$/, '$1.$2.$3/$4-$5') : ''}
+                            </MenuItem>
+                          ))}
+                        </Select>
+                        {carregandoFranquias && (
+                          <CircularProgress size={20} sx={{ position: 'absolute', right: 24, top: 12 }} />
+                        )}
+                      </FormControl>
+                    </Grid>
+                  )}
                 </Grid>
               </Stack>
             </Paper>

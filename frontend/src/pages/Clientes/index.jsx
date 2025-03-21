@@ -359,8 +359,10 @@ export default function Clientes() {
           <TableRow sx={{ bgcolor: 'primary.light' }}>
             <TableCell sx={{ color: 'primary.contrastText', fontWeight: 'bold' }}>Razão Social</TableCell>
             <TableCell sx={{ color: 'primary.contrastText', fontWeight: 'bold' }}>CNPJ</TableCell>
-            <TableCell sx={{ color: 'primary.contrastText', fontWeight: 'bold' }}>Cidade/UF</TableCell>
+            <TableCell sx={{ color: 'primary.contrastText', fontWeight: 'bold' }}>Cidade</TableCell>
+            <TableCell sx={{ color: 'primary.contrastText', fontWeight: 'bold' }}>Estado</TableCell>
             <TableCell sx={{ color: 'primary.contrastText', fontWeight: 'bold' }}>CNAEs</TableCell>
+            <TableCell sx={{ color: 'primary.contrastText', fontWeight: 'bold' }}>Franquia</TableCell>
             <TableCell sx={{ color: 'primary.contrastText', fontWeight: 'bold' }} align="center">Ações</TableCell>
           </TableRow>
         </TableHead>
@@ -368,6 +370,8 @@ export default function Clientes() {
           {loading ? (
             Array.from(new Array(5)).map((_, index) => (
               <TableRow key={index}>
+                <TableCell><Skeleton /></TableCell>
+                <TableCell><Skeleton /></TableCell>
                 <TableCell><Skeleton /></TableCell>
                 <TableCell><Skeleton /></TableCell>
                 <TableCell><Skeleton /></TableCell>
@@ -386,33 +390,50 @@ export default function Clientes() {
               <TableRow key={cliente.id} hover>
                 <TableCell>{cliente.razao_social}</TableCell>
                 <TableCell>{cliente.cnpj}</TableCell>
-                <TableCell>{cliente.cidade}/{cliente.estado}</TableCell>
+                <TableCell>{cliente.cidade}</TableCell>
+                <TableCell>{cliente.estado}</TableCell>
                 <TableCell>
                   {cliente.cnaes && cliente.cnaes.length > 0 ? (
-                    <Tooltip title={
-                      <Box>
-                        <Typography variant="caption" fontWeight="bold">CNAEs:</Typography>
-                        {cliente.cnaes.map((cnae, i) => (
-                          <Typography key={i} variant="caption" display="block">
-                            {cnae.tipo === 'principal' ? '• Principal: ' : '• Secundário: '}
-                            {cnae.codigo} - {cnae.descricao}
-                          </Typography>
-                        ))}
-                      </Box>
-                    }>
+                    <Box sx={{ display: 'flex', gap: 0.5, flexWrap: 'wrap' }}>
+                      {cliente.cnaes.slice(0, 2).map((cnae, index) => (
+                        <Chip 
+                          key={index} 
+                          label={cnae.codigo}
+                          size="small"
+                          color={cnae.tipo === 'principal' ? 'primary' : 'default'}
+                          variant={cnae.tipo === 'principal' ? 'filled' : 'outlined'}
+                          sx={{ fontSize: '0.7rem' }}
+                        />
+                      ))}
+                      {cliente.cnaes.length > 2 && (
+                        <Chip 
+                          label={`+${cliente.cnaes.length - 2}`}
+                          size="small"
+                          variant="outlined"
+                          sx={{ fontSize: '0.7rem' }}
+                        />
+                      )}
+                    </Box>
+                  ) : (
+                    'Não cadastrado'
+                  )}
+                </TableCell>
+                <TableCell>
+                  {cliente.franquia ? (
+                    <Tooltip title={`CNPJ: ${cliente.franquia.cnpj}`}>
                       <Chip 
-                        size="small" 
-                        label={`${cliente.cnaes.length} CNAE(s)`} 
-                        color="primary" 
+                        label={cliente.franquia.nome}
+                        size="small"
+                        color="secondary"
                         variant="outlined"
                       />
                     </Tooltip>
                   ) : (
                     <Chip 
-                      size="small" 
-                      label="Sem CNAEs" 
-                      color="default" 
+                      label="Sem franquia"
+                      size="small"
                       variant="outlined"
+                      color="default"
                     />
                   )}
                 </TableCell>

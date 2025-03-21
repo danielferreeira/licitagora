@@ -18,12 +18,16 @@ import BuscarLicitacoes from './pages/BuscarLicitacoes';
 import NovaLicitacao from './pages/NovaLicitacao';
 import EditarLicitacao from './pages/EditarLicitacao';
 import VisualizarLicitacao from './pages/VisualizarLicitacao';
+import Franquias from './pages/Franquias';
+import FranquiaClientes from './pages/FranquiaClientes';
+import TestAuth from './TestAuth';
 
 const AppRoutes = () => {
   return (
     <Routes>
       {/* Rota pública */}
       <Route path="/login" element={<Login />} />
+      <Route path="/test-auth" element={<TestAuth />} />
       
       {/* Rotas protegidas */}
       <Route path="/" element={
@@ -59,6 +63,10 @@ const AppRoutes = () => {
         
         {/* Prazos */}
         <Route path="prazos" element={<Prazos />} />
+
+        {/* Franquias - Apenas para Administradores */}
+        <Route path="franquias" element={<Franquias />} />
+        <Route path="franquias/:id/clientes" element={<FranquiaClientes />} />
       </Route>
       
       {/* Rota para página não encontrada */}

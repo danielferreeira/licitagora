@@ -23,6 +23,7 @@ import {
 } from '@mui/icons-material';
 import { toast } from 'react-toastify';
 import { authService } from '../../services/supabase';
+import { supabase } from '../../config/supabase';
 import logoSvg from '../../assets/logo.svg';
 
 const Login = () => {
@@ -39,6 +40,7 @@ const Login = () => {
   const [showPassword, setShowPassword] = useState(false);
   const [loading, setLoading] = useState(false);
   const [loginError, setLoginError] = useState('');
+  const [errorMessage, setErrorMessage] = useState('');
   
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -84,27 +86,80 @@ const Login = () => {
   
   const handleSubmit = async (e) => {
     e.preventDefault();
-    
-    if (!validateForm()) {
-      return;
-    }
-    
     setLoading(true);
-    setLoginError('');
-    
+    setErrorMessage('');
+
     try {
-      await authService.signInWithEmail(formData.email, formData.password);
-      toast.success('Login realizado com sucesso!');
-      navigate(from, { replace: true });
-    } catch (error) {
-      console.error('Erro ao fazer login:', error);
-      setLoginError(
-        error.message === 'Invalid login credentials'
-          ? 'Email ou senha incorretos'
-          : 'Erro ao fazer login. Tente novamente mais tarde.'
-      );
-      toast.error('Falha ao realizar login');
-    } finally {
+      console.log('Tentando fazer login com:', formData.email);
+
+      // Verificar a conexão com o servidor antes de tentar login
+      try {
+        const { error: pingError } = await supabase.from('health_check').select('status').limit(1);
+        if (pingError) {
+          console.error('Erro ao verificar conexão:', pingError);
+          setErrorMessage('Serviço temporariamente indisponível. Por favor, tente novamente mais tarde.');
+          setLoading(false);
+          return;
+        }
+      } catch (pingErr) {
+        console.error('Falha ao verificar conexão:', pingErr);
+      }
+      
+      const { data, error } = await authService.signInWithEmail(formData.email, formData.password);
+      
+      if (error) {
+        console.error('Erro ao fazer login:', error);
+        
+        if (error.status === 500 || error.message?.includes('Server Error')) {
+          setErrorMessage('Serviço temporariamente indisponível. Por favor, tente novamente mais tarde.');
+        } else {
+          // Exibir mensagem de erro amigável para o usuário
+          setErrorMessage(error.message || 'Erro ao fazer login. Tente novamente mais tarde.');
+        }
+        
+        setLoading(false);
+        return;
+      }
+      
+      console.log('Login bem-sucedido:', data?.user?.id);
+      
+      // Atualizar o último login do usuário
+      if (data?.user?.id) {
+        try {
+          // Verificar se a tabela profiles existe antes de tentar atualizar
+          const { error: profileCheckError } = await supabase
+            .from('profiles')
+            .select('id')
+            .eq('id', data.user.id)
+            .maybeSingle();
+            
+          // Se houve erro 404, a tabela provavelmente não existe
+          if (profileCheckError && (profileCheckError.code === '42P01' || profileCheckError.status === 404)) {
+            console.warn('Tabela profiles não encontrada, ignorando atualização de último login');
+          } else {
+            // Tenta atualizar o último login
+            const { error: updateError } = await supabase
+              .from('profiles')
+              .upsert({
+                id: data.user.id,
+                last_login: new Date().toISOString(),
+              });
+            
+            if (updateError) {
+              console.warn('Erro ao atualizar último login:', updateError);
+            }
+          }
+        } catch (updateErr) {
+          console.warn('Exceção ao atualizar último login:', updateErr);
+          // Continuar mesmo se houver erro na atualização
+        }
+      }
+
+      // Redirecionar para a página inicial
+      navigate('/');
+    } catch (err) {
+      console.error('Exceção ao fazer login:', err);
+      setErrorMessage('Ocorreu um erro inesperado. Por favor, tente novamente mais tarde.');
       setLoading(false);
     }
   };
@@ -174,13 +229,13 @@ const Login = () => {
               </Typography>
             </Box>
             
-            {loginError && (
+            {errorMessage && (
               <Alert 
                 severity="error" 
                 sx={{ mb: 3, borderRadius: 1 }}
                 variant="filled"
               >
-                {loginError}
+                {errorMessage}
               </Alert>
             )}
             
