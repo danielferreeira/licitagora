@@ -20,6 +20,7 @@ import EditarLicitacao from './pages/EditarLicitacao/EditarLicitacaoPage';
 import VisualizarLicitacao from './pages/VisualizarLicitacao/VisualizarLicitacaoPage';
 import Franquias from './pages/Franquias/FranquiasPage';
 import FranquiaClientes from './pages/FranquiaClientes/FranquiaClientesPage';
+import PermissoesMatriz from './pages/PermissoesMatriz/PermissoesMatrizPage';
 import TestAuth from './TestAuth';
 import RedefinirSenha from './components/RedefinirSenha/RedefinirSenha';
 
@@ -69,6 +70,7 @@ const AppRoutes = () => {
         {/* Franquias - Apenas para Administradores */}
         <Route path="franquias" element={<Franquias />} />
         <Route path="franquias/:id/clientes" element={<FranquiaClientes />} />
+        <Route path="permissoes-matriz" element={<PermissoesMatriz />} />
       </Route>
       
       {/* Rota para página não encontrada */}

@@ -43,11 +43,12 @@ import {
 } from '@mui/icons-material';
 import { useNavigate } from 'react-router-dom';
 import { toast } from 'react-toastify';
-import { franquiaService, authService } from '../../services/supabase';
+import { franquiaService, authService, supabase } from '../../services/supabase';
 import { formatarCNPJ, formatarTelefone } from '../../utils/formatters';
 import FranquiaDialog from '../../components/FranquiaDialog/FranquiaDialog';
 import ConfirmDialog from '../../components/ConfirmDialog/ConfirmDialog';
 import UsuarioFranquiaDialog from '../../components/UsuarioFranquiaDialog/UsuarioFranquiaDialog';
+import ColaboradorFranquiaDialog from '../../components/ColaboradorFranquiaDialog/ColaboradorFranquiaDialog';
 
 const Franquias = () => {
   const [franquias, setFranquias] = useState([]);
@@ -60,31 +61,49 @@ const Franquias = () => {
   const [searchTerm, setSearchTerm] = useState('');
   const navigate = useNavigate();
   const [openUsuarioDialog, setOpenUsuarioDialog] = useState(false);
+  const [openColaboradorDialog, setOpenColaboradorDialog] = useState(false);
+  const [isFranquiaResponsavel, setIsFranquiaResponsavel] = useState(false);
   const theme = useTheme();
   const isMobile = useMediaQuery(theme.breakpoints.down('sm'));
 
-  // Verificar se o usuário é admin
+  // Verificar se o usuário é admin ou responsável por franquia
   useEffect(() => {
-    const checkAdmin = async () => {
+    const checkUserRole = async () => {
       try {
         const user = await authService.getCurrentUser();
         // Verificar se é admin pelo email ou pelos metadados
         if (user && (user.email === 'admin@licitagora.com' || user.app_metadata?.role === 'admin')) {
           setIsAdmin(true);
+          setIsFranquiaResponsavel(false);
         } else {
           setIsAdmin(false);
-          // Redirecionar para home se não for admin
-          navigate('/home');
-          toast.error('Acesso não autorizado. Esta página é apenas para administradores.');
+          
+          // Verificar se é responsável por franquia
+          const { data, error } = await supabase
+            .from('perfis_usuario')
+            .select('is_responsavel, tipo')
+            .eq('user_id', user.id)
+            .eq('tipo', 'FRANQUIA')
+            .single();
+            
+          if (!error && data && data.is_responsavel) {
+            setIsFranquiaResponsavel(true);
+          } else {
+            setIsFranquiaResponsavel(false);
+            // Redirecionar se não for admin nem responsável por franquia
+            navigate('/home');
+            toast.error('Acesso não autorizado.');
+          }
         }
       } catch (error) {
-        console.error('Erro ao verificar permissões de admin:', error);
+        console.error('Erro ao verificar permissões:', error);
         setIsAdmin(false);
+        setIsFranquiaResponsavel(false);
         navigate('/home');
       }
     };
 
-    checkAdmin();
+    checkUserRole();
   }, [navigate]);
 
   // Buscar lista de franquias
@@ -220,6 +239,14 @@ const Franquias = () => {
     } finally {
       setIsLoading(false);
     }
+  };
+
+  const handleOpenColaboradorDialog = () => {
+    setOpenColaboradorDialog(true);
+  };
+
+  const handleCloseColaboradorDialog = () => {
+    setOpenColaboradorDialog(false);
   };
 
   const filteredFranquias = franquias.filter(franquia => 
@@ -494,81 +521,56 @@ const Franquias = () => {
   };
 
   return (
-    <Box sx={{ padding: { xs: 2, md: 3 } }}>
-      {/* Cabeçalho */}
+    <Box sx={{ p: 3 }}>
       <Box sx={{ 
         display: 'flex', 
-        flexDirection: { xs: 'column', sm: 'row' }, 
         justifyContent: 'space-between', 
-        alignItems: { xs: 'stretch', sm: 'center' }, 
+        alignItems: 'center',
         mb: 3,
-        gap: 2
+        flexDirection: isMobile ? 'column' : 'row',
+        gap: isMobile ? 2 : 0
       }}>
-        <Typography 
-          variant="h4" 
-          component="h1" 
-          fontWeight="bold" 
-          sx={{ 
-            fontSize: { xs: '1.5rem', md: '2rem' },
-            color: theme.palette.primary.main,
-            borderBottom: `2px solid ${theme.palette.primary.main}`,
-            paddingBottom: 1,
-            display: 'inline-block'
-          }}
-        >
-          Gerenciamento de Franquias
+        <Typography variant="h4" component="h1" gutterBottom>
+          {isAdmin ? 'Gerenciar Franquias' : 'Gerenciar Colaboradores'}
         </Typography>
         
         <Box sx={{ 
           display: 'flex', 
-          flexDirection: { xs: 'column', sm: 'row' }, 
-          gap: 1.5,
-          width: { xs: '100%', sm: 'auto' }
+          gap: 2,
+          flexDirection: isMobile ? 'column' : 'row',
+          width: isMobile ? '100%' : 'auto'
         }}>
-          <TextField
-            placeholder="Buscar franquia..."
-            size="small"
-            variant="outlined"
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-            InputProps={{
-              startAdornment: <SearchIcon fontSize="small" sx={{ mr: 0.5, color: 'text.secondary' }} />,
-            }}
-            sx={{ 
-              flexGrow: { xs: 1, sm: 0 }, 
-              minWidth: { sm: '220px' },
-              '& .MuiOutlinedInput-root': {
-                borderRadius: '8px'
-              }
-            }}
-          />
+          {isAdmin && (
+            <Button
+              variant="contained"
+              color="primary"
+              startIcon={<AddIcon />}
+              onClick={() => handleOpenForm()}
+              fullWidth={isMobile}
+            >
+              Nova Franquia
+            </Button>
+          )}
+          
+          {isFranquiaResponsavel && (
+            <Button
+              variant="contained"
+              color="primary"
+              startIcon={<PersonIcon />}
+              onClick={handleOpenColaboradorDialog}
+              fullWidth={isMobile}
+            >
+              Novo Colaborador
+            </Button>
+          )}
           
           <Button
             variant="outlined"
-            color="primary"
-            onClick={handleRefresh}
-            disabled={isLoading}
             startIcon={<RefreshIcon />}
-            sx={{ 
-              flex: { xs: '1 0 auto', sm: '0 0 auto' },
-              borderRadius: '8px'
-            }}
+            onClick={handleRefresh}
+            fullWidth={isMobile}
           >
             Atualizar
-          </Button>
-          
-          <Button
-            variant="contained"
-            startIcon={<AddIcon />}
-            onClick={() => handleOpenForm()}
-            disabled={isLoading}
-            sx={{ 
-              flex: { xs: '1 0 auto', sm: '0 0 auto' },
-              borderRadius: '8px',
-              boxShadow: 2
-            }}
-          >
-            Nova Franquia
           </Button>
         </Box>
       </Box>
@@ -637,6 +639,13 @@ const Franquias = () => {
           handleCloseUsuarioDialog();
           handleFormSuccess();
         }}
+      />
+
+      {/* Diálogo de Colaborador */}
+      <ColaboradorFranquiaDialog
+        open={openColaboradorDialog}
+        onClose={handleCloseColaboradorDialog}
+        onSuccess={handleRefresh}
       />
     </Box>
   );

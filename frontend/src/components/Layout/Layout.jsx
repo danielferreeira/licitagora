@@ -27,6 +27,7 @@ import {
   AssignmentTurnedIn as AssignmentTurnedInIcon,
   AccountBalance as AccountBalanceIcon,
   Logout as LogoutIcon,
+  Security as SecurityIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
 import { authService } from '../../services/api';
@@ -78,7 +79,8 @@ export default function Layout() {
 
   // Menu de administração (apenas para admins)
   const adminMenuItems = [
-    { text: 'Gerenciar Franquias', icon: <BusinessIcon />, path: '/franquias' }
+    { text: 'Gerenciar Franquias', icon: <BusinessIcon />, path: '/franquias' },
+    { text: 'Gerenciar Permissões', icon: <SecurityIcon />, path: '/permissoes-matriz' }
   ];
 
   const handleDrawerToggle = () => {

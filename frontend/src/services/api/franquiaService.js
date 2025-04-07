@@ -16,10 +16,11 @@ const franquiaService = {
         return [];
       }
       
+      // Usar a função SQL listar_franquias
       const { data, error } = await supabase
-        .from('franquias')
-        .select('*')
-        .order('nome');
+        .rpc('listar_franquias', {
+          p_somente_ativas: false  // Listar todas as franquias (ativas e inativas)
+        });
       
       if (error) throw error;
       
@@ -368,6 +369,131 @@ const franquiaService = {
       return { 
         success: false, 
         error: { message: error.message || 'Erro ao criar usuário' } 
+      };
+    }
+  },
+  
+  // Criar franquia com usuário responsável
+  async criarFranquiaComUsuarioResponsavel(dados) {
+    try {
+      await verificarAutenticacao();
+      
+      // Verificar se é admin
+      const user = await authService.getCurrentUser();
+      if (!user || (user.email !== 'admin@licitagora.com' && user.app_metadata?.role !== 'admin')) {
+        return { 
+          success: false, 
+          error: { message: 'Apenas administradores podem criar franquias' } 
+        };
+      }
+      
+      // Formatar dados
+      const dadosFormatados = {
+        p_nome: dados.nome,
+        p_cnpj: dados.cnpj?.replace(/\D/g, ''),
+        p_email: dados.email,
+        p_telefone: dados.telefone?.replace(/\D/g, ''),
+        p_senha: dados.senha,
+        p_permissoes: dados.permissoes || null
+      };
+      
+      console.log('Enviando dados para criar franquia:', {
+        ...dadosFormatados,
+        p_senha: '*********',
+        p_permissoes: dadosFormatados.p_permissoes
+      });
+      
+      // Chamar a função SQL para criar franquia com usuário responsável
+      const { data, error } = await supabase.rpc(
+        'criar_franquia_com_usuario_responsavel',
+        dadosFormatados
+      );
+      
+      if (error) {
+        console.error('Erro ao criar franquia com usuário:', error);
+        
+        // Tratar erros específicos
+        if (error.message.includes('CNPJ')) {
+          return { 
+            success: false, 
+            error: { message: 'CNPJ inválido ou já cadastrado' },
+            campo: 'cnpj'
+          };
+        } else if (error.message.includes('Email')) {
+          return { 
+            success: false, 
+            error: { message: 'Email inválido ou já cadastrado' },
+            campo: 'email'
+          };
+        }
+        
+        return { 
+          success: false, 
+          error: { message: error.message, code: error.code },
+          details: error.details 
+        };
+      }
+      
+      return { 
+        success: true, 
+        data: data || { mensagem: 'Franquia criada com sucesso com usuário responsável' } 
+      };
+    } catch (error) {
+      console.error('Erro ao criar franquia com usuário:', error);
+      return { 
+        success: false, 
+        error: { message: error.message || 'Erro desconhecido' } 
+      };
+    }
+  },
+  
+  // Criar colaborador para uma franquia por usuário responsável
+  async criarColaboradorFranquia(dados) {
+    try {
+      await verificarAutenticacao();
+      
+      // Formatar dados
+      const dadosFormatados = {
+        p_nome: dados.nome,
+        p_email: dados.email,
+        p_senha: dados.senha,
+        p_permissoes: dados.permissoes || null
+      };
+      
+      // Chamar a função SQL para criar colaborador da franquia
+      const { data, error } = await supabase.rpc(
+        'criar_colaborador_franquia',
+        dadosFormatados
+      );
+      
+      if (error) {
+        console.error('Erro ao criar colaborador de franquia:', error);
+        
+        // Tratar erros específicos
+        if (error.message.includes('Email')) {
+          return { 
+            success: false, 
+            error: { message: 'Email inválido ou já cadastrado' },
+            campo: 'email'
+          };
+        }
+        
+        return { 
+          success: false, 
+          error: { message: error.message, code: error.code },
+          details: error.details 
+        };
+      }
+      
+      return { 
+        success: true, 
+        data: data || { mensagem: 'Colaborador criado com sucesso' } 
+      };
+    } catch (error) {
+      console.error('Erro ao criar colaborador de franquia:', error);
+      return { 
+        success: false, 
+        error: { message: error.message || 'Erro desconhecido' } 
       };
     }
   }

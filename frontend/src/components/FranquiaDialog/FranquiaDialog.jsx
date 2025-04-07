@@ -15,13 +15,23 @@ import {
   IconButton,
   Tooltip,
   Divider,
-  InputAdornment
+  InputAdornment,
+  Switch,
+  FormControlLabel,
+  FormGroup,
+  Checkbox,
+  Collapse
 } from '@mui/material';
 import { 
   Close as CloseIcon,
   Search as SearchIcon, 
   Business as BusinessIcon,
-  Save as SaveIcon
+  Save as SaveIcon,
+  Visibility as VisibilityIcon,
+  VisibilityOff as VisibilityOffIcon,
+  Security as SecurityIcon,
+  ExpandMore as ExpandMoreIcon,
+  ExpandLess as ExpandLessIcon
 } from '@mui/icons-material';
 import { toast } from 'react-toastify';
 import { franquiaService, authService } from '../../services/supabase';
@@ -39,11 +49,25 @@ export default function FranquiaDialog({ open, franquia, onClose, onSuccess }) {
     bairro: '',
     cidade: '',
     estado: '',
-    cep: ''
+    cep: '',
+    senha: '',
+    confirmarSenha: ''
   });
   const [formErrors, setFormErrors] = useState({});
   const [isLoading, setIsLoading] = useState(false);
   const [isAdmin, setIsAdmin] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
+  const [showConfirmPassword, setShowConfirmPassword] = useState(false);
+  const [criarUsuario, setCriarUsuario] = useState(true);
+  const [permissoes, setPermissoes] = useState({
+    GESTAO_FINANCEIRA: true,
+    GESTAO_CLIENTES: true,
+    GESTAO_LICITACOES: true,
+    GESTAO_COLABORADORES: true,
+    EXPORTAR_RELATORIOS: true,
+    DASHBOARD_AVANCADO: true
+  });
+  const [permissoesExpandidas, setPermissoesExpandidas] = useState(false);
 
   // Verificar se o usuário é admin
   useEffect(() => {
@@ -80,8 +104,11 @@ export default function FranquiaDialog({ open, franquia, onClose, onSuccess }) {
         bairro: franquia.bairro || '',
         cidade: franquia.cidade || '',
         estado: franquia.estado || '',
-        cep: franquia.cep || ''
+        cep: franquia.cep || '',
+        senha: '',
+        confirmarSenha: ''
       });
+      setCriarUsuario(false); // Em edição, não criamos usuario novo
     } else {
       // Limpar formulário para nova franquia
       setFormData({
@@ -94,8 +121,11 @@ export default function FranquiaDialog({ open, franquia, onClose, onSuccess }) {
         bairro: '',
         cidade: '',
         estado: '',
-        cep: ''
+        cep: '',
+        senha: '',
+        confirmarSenha: ''
       });
+      setCriarUsuario(true);
     }
     setFormErrors({});
   }, [franquia, open]);
@@ -122,6 +152,15 @@ export default function FranquiaDialog({ open, franquia, onClose, onSuccess }) {
     }
   };
 
+  const handlePermissaoChange = (event) => {
+    const { name, checked } = event.target;
+    setPermissoes({ ...permissoes, [name]: checked });
+  };
+
+  const togglePermissoesExpandidas = () => {
+    setPermissoesExpandidas(!permissoesExpandidas);
+  };
+
   const validateForm = () => {
     const errors = {};
     if (!formData.nome) errors.nome = 'Nome é obrigatório';
@@ -130,6 +169,19 @@ export default function FranquiaDialog({ open, franquia, onClose, onSuccess }) {
     
     if (!formData.email) errors.email = 'Email é obrigatório';
     else if (!/\S+@\S+\.\S+/.test(formData.email)) errors.email = 'Email inválido';
+
+    // Validações de senha apenas quando estamos criando um novo usuário
+    if (criarUsuario && !franquia) {
+      if (!formData.senha) {
+        errors.senha = 'Senha é obrigatória';
+      } else if (formData.senha.length < 8) {
+        errors.senha = 'A senha deve ter pelo menos 8 caracteres';
+      }
+      
+      if (formData.senha !== formData.confirmarSenha) {
+        errors.confirmarSenha = 'As senhas não coincidem';
+      }
+    }
 
     setFormErrors(errors);
     return Object.keys(errors).length === 0;
@@ -145,9 +197,45 @@ export default function FranquiaDialog({ open, franquia, onClose, onSuccess }) {
         // Atualizar franquia existente
         await franquiaService.atualizarFranquia(franquia.id, formData);
         toast.success('Franquia atualizada com sucesso!');
+      } else if (criarUsuario) {
+        // Criar nova franquia COM usuário responsável
+        console.log('Iniciando criação de franquia com usuário responsável:', {
+          ...formData,
+          senha: '************', // Ocultar senha nos logs
+          permissoes: Object.entries(permissoes)
+            .filter(([_, isSelected]) => isSelected)
+            .map(([permissao, _]) => permissao)
+        });
+        
+        // Preparar lista de permissões selecionadas
+        const permissoesSelecionadas = Object.entries(permissoes)
+          .filter(([_, isSelected]) => isSelected)
+          .map(([permissao, _]) => permissao);
+        
+        const resultado = await franquiaService.criarFranquiaComUsuarioResponsavel({
+          nome: formData.nome,
+          email: formData.email,
+          cnpj: formData.cnpj?.replace(/\D/g, ''),
+          telefone: formData.telefone?.replace(/\D/g, ''),
+          senha: formData.senha,
+          permissoes: permissoesSelecionadas
+        });
+        
+        if (!resultado.success) {
+          // Verificar erros específicos
+          if (resultado.campo) {
+            setFormErrors({
+              ...formErrors,
+              [resultado.campo]: resultado.error.message
+            });
+          }
+          throw new Error(resultado.error.message);
+        }
+        
+        toast.success('Franquia criada com sucesso com usuário responsável!');
       } else {
         // Criar nova franquia apenas (sem criar usuário)
-        console.log('Iniciando criação de franquia com dados:', {
+        console.log('Iniciando criação de franquia sem usuário:', {
           ...formData
         });
         
@@ -168,8 +256,6 @@ export default function FranquiaDialog({ open, franquia, onClose, onSuccess }) {
           })
           .select()
           .single();
-        
-        console.log('Resposta da criação de franquia:', resultado);
         
         if (error) {
           throw error;
@@ -233,6 +319,10 @@ export default function FranquiaDialog({ open, franquia, onClose, onSuccess }) {
     }
   };
 
+  // Funções para mostrar/ocultar senhas
+  const toggleShowPassword = () => setShowPassword(!showPassword);
+  const toggleShowConfirmPassword = () => setShowConfirmPassword(!showConfirmPassword);
+
   return (
     <Dialog 
       open={open} 
@@ -286,17 +376,24 @@ export default function FranquiaDialog({ open, franquia, onClose, onSuccess }) {
           )}
           
           <Grid container spacing={2}>
-            <Grid item xs={12} md={6}>
+            <Grid item xs={12}>
+              <Typography variant="subtitle1" fontWeight="500" color="primary">
+                Dados da Franquia
+              </Typography>
+              <Divider sx={{ my: 1 }} />
+            </Grid>
+            
+            <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
                 label="Nome da Franquia"
                 name="nome"
                 value={formData.nome}
                 onChange={handleChange}
-                margin="normal"
                 error={!!formErrors.nome}
                 helperText={formErrors.nome}
-                required
+                disabled={isLoading}
+                size="small"
                 InputProps={{
                   startAdornment: (
                     <InputAdornment position="start">
@@ -306,21 +403,23 @@ export default function FranquiaDialog({ open, franquia, onClose, onSuccess }) {
                 }}
               />
             </Grid>
-            <Grid item xs={12} md={6}>
+            
+            <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
                 label="CNPJ"
                 name="cnpj"
                 value={formData.cnpj}
                 onChange={handleChange}
-                margin="normal"
                 error={!!formErrors.cnpj}
                 helperText={formErrors.cnpj}
-                required
-                placeholder="00.000.000/0000-00"
+                disabled={isLoading || !!franquia}
+                inputProps={{ maxLength: 18 }}
+                size="small"
               />
             </Grid>
-            <Grid item xs={12} md={6}>
+            
+            <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
                 label="Email"
@@ -328,22 +427,25 @@ export default function FranquiaDialog({ open, franquia, onClose, onSuccess }) {
                 type="email"
                 value={formData.email}
                 onChange={handleChange}
-                margin="normal"
                 error={!!formErrors.email}
-                helperText={franquia ? (formErrors.email || "Não é possível alterar o email de uma franquia existente") : formErrors.email}
-                required
-                disabled={!!franquia} // Não permite editar email de franquia existente
+                helperText={formErrors.email}
+                disabled={isLoading || !!franquia}
+                size="small"
               />
             </Grid>
-            <Grid item xs={12} md={6}>
+            
+            <Grid item xs={12} sm={6}>
               <TextField
                 fullWidth
                 label="Telefone"
                 name="telefone"
                 value={formData.telefone}
                 onChange={handleChange}
-                margin="normal"
-                placeholder="(00) 00000-0000"
+                error={!!formErrors.telefone}
+                helperText={formErrors.telefone}
+                disabled={isLoading}
+                inputProps={{ maxLength: 15 }}
+                size="small"
               />
             </Grid>
             
@@ -418,6 +520,239 @@ export default function FranquiaDialog({ open, franquia, onClose, onSuccess }) {
                 margin="normal"
               />
             </Grid>
+            
+            {/* Seção de usuário responsável - visível apenas ao criar nova franquia */}
+            {!franquia && (
+              <>
+                <Grid item xs={12} sx={{ mt: 2 }}>
+                  <Box display="flex" alignItems="center" justifyContent="space-between">
+                    <Typography variant="subtitle1" fontWeight="500" color="primary">
+                      Usuário Responsável
+                    </Typography>
+                    <FormControlLabel
+                      control={
+                        <Switch 
+                          checked={criarUsuario}
+                          onChange={(e) => setCriarUsuario(e.target.checked)}
+                          color="primary"
+                        />
+                      }
+                      label="Criar usuário responsável"
+                    />
+                  </Box>
+                  <Divider sx={{ my: 1 }} />
+                </Grid>
+                
+                {criarUsuario && (
+                  <>
+                    <Grid item xs={12}>
+                      <Alert severity="info" sx={{ mb: 2 }}>
+                        Esse usuário será o administrador da franquia e poderá gerenciar seus próprios colaboradores.
+                      </Alert>
+                    </Grid>
+                    
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Senha"
+                        name="senha"
+                        type={showPassword ? "text" : "password"}
+                        value={formData.senha}
+                        onChange={handleChange}
+                        error={!!formErrors.senha}
+                        helperText={formErrors.senha}
+                        disabled={isLoading}
+                        size="small"
+                        InputProps={{
+                          endAdornment: (
+                            <InputAdornment position="end">
+                              <IconButton
+                                onClick={toggleShowPassword}
+                                edge="end"
+                                size="small"
+                              >
+                                {showPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                              </IconButton>
+                            </InputAdornment>
+                          ),
+                        }}
+                      />
+                    </Grid>
+                    
+                    <Grid item xs={12} sm={6}>
+                      <TextField
+                        fullWidth
+                        label="Confirmar Senha"
+                        name="confirmarSenha"
+                        type={showConfirmPassword ? "text" : "password"}
+                        value={formData.confirmarSenha}
+                        onChange={handleChange}
+                        error={!!formErrors.confirmarSenha}
+                        helperText={formErrors.confirmarSenha}
+                        disabled={isLoading}
+                        size="small"
+                        InputProps={{
+                          endAdornment: (
+                            <InputAdornment position="end">
+                              <IconButton
+                                onClick={toggleShowConfirmPassword}
+                                edge="end"
+                                size="small"
+                              >
+                                {showConfirmPassword ? <VisibilityOffIcon /> : <VisibilityIcon />}
+                              </IconButton>
+                            </InputAdornment>
+                          ),
+                        }}
+                      />
+                    </Grid>
+
+                    {/* Seção de Permissões */}
+                    <Grid item xs={12} sx={{ mt: 2 }}>
+                      <Box 
+                        sx={{ 
+                          display: 'flex', 
+                          alignItems: 'center', 
+                          justifyContent: 'space-between',
+                          cursor: 'pointer',
+                          py: 1
+                        }}
+                        onClick={togglePermissoesExpandidas}
+                      >
+                        <Typography 
+                          variant="subtitle1" 
+                          sx={{ 
+                            display: 'flex', 
+                            alignItems: 'center',
+                            color: 'primary.main',
+                            fontWeight: 500
+                          }}
+                        >
+                          <SecurityIcon sx={{ mr: 1, fontSize: '1.2rem' }} />
+                          Permissões do Responsável
+                        </Typography>
+                        <IconButton size="small">
+                          {permissoesExpandidas ? <ExpandLessIcon /> : <ExpandMoreIcon />}
+                        </IconButton>
+                      </Box>
+                      <Divider sx={{ mb: 2 }} />
+                      
+                      <Collapse in={permissoesExpandidas}>
+                        <Alert severity="info" sx={{ mb: 2 }}>
+                          Defina as permissões que o responsável pela franquia terá no sistema.
+                        </Alert>
+                        
+                        <FormGroup sx={{ pl: 2 }}>
+                          <Grid container spacing={2}>
+                            <Grid item xs={12} sm={6}>
+                              <FormControlLabel
+                                control={
+                                  <Checkbox 
+                                    checked={permissoes.GESTAO_FINANCEIRA} 
+                                    onChange={handlePermissaoChange}
+                                    name="GESTAO_FINANCEIRA"
+                                    color="primary"
+                                  />
+                                }
+                                label="Gestão Financeira"
+                              />
+                              <FormHelperText sx={{ mt: -1, ml: 4 }}>
+                                Acesso a relatórios financeiros e faturamento
+                              </FormHelperText>
+                            </Grid>
+                            
+                            <Grid item xs={12} sm={6}>
+                              <FormControlLabel
+                                control={
+                                  <Checkbox 
+                                    checked={permissoes.GESTAO_CLIENTES} 
+                                    onChange={handlePermissaoChange}
+                                    name="GESTAO_CLIENTES"
+                                    color="primary"
+                                  />
+                                }
+                                label="Gestão de Clientes"
+                              />
+                              <FormHelperText sx={{ mt: -1, ml: 4 }}>
+                                Cadastrar e editar informações de clientes
+                              </FormHelperText>
+                            </Grid>
+                            
+                            <Grid item xs={12} sm={6}>
+                              <FormControlLabel
+                                control={
+                                  <Checkbox 
+                                    checked={permissoes.GESTAO_LICITACOES} 
+                                    onChange={handlePermissaoChange}
+                                    name="GESTAO_LICITACOES"
+                                    color="primary"
+                                  />
+                                }
+                                label="Gestão de Licitações"
+                              />
+                              <FormHelperText sx={{ mt: -1, ml: 4 }}>
+                                Gerenciar licitações e propostas
+                              </FormHelperText>
+                            </Grid>
+                            
+                            <Grid item xs={12} sm={6}>
+                              <FormControlLabel
+                                control={
+                                  <Checkbox 
+                                    checked={permissoes.GESTAO_COLABORADORES} 
+                                    onChange={handlePermissaoChange}
+                                    name="GESTAO_COLABORADORES"
+                                    color="primary"
+                                  />
+                                }
+                                label="Gestão de Colaboradores"
+                              />
+                              <FormHelperText sx={{ mt: -1, ml: 4 }}>
+                                Criar e gerenciar colaboradores da franquia
+                              </FormHelperText>
+                            </Grid>
+                            
+                            <Grid item xs={12} sm={6}>
+                              <FormControlLabel
+                                control={
+                                  <Checkbox 
+                                    checked={permissoes.EXPORTAR_RELATORIOS} 
+                                    onChange={handlePermissaoChange}
+                                    name="EXPORTAR_RELATORIOS"
+                                    color="primary"
+                                  />
+                                }
+                                label="Exportar Relatórios"
+                              />
+                              <FormHelperText sx={{ mt: -1, ml: 4 }}>
+                                Exportar relatórios em diversos formatos
+                              </FormHelperText>
+                            </Grid>
+                            
+                            <Grid item xs={12} sm={6}>
+                              <FormControlLabel
+                                control={
+                                  <Checkbox 
+                                    checked={permissoes.DASHBOARD_AVANCADO} 
+                                    onChange={handlePermissaoChange}
+                                    name="DASHBOARD_AVANCADO"
+                                    color="primary"
+                                  />
+                                }
+                                label="Dashboard Avançado"
+                              />
+                              <FormHelperText sx={{ mt: -1, ml: 4 }}>
+                                Acesso a visualizações e métricas avançadas
+                              </FormHelperText>
+                            </Grid>
+                          </Grid>
+                        </FormGroup>
+                      </Collapse>
+                    </Grid>
+                  </>
+                )}
+              </>
+            )}
           </Grid>
         </Box>
       </DialogContent>
@@ -434,7 +769,7 @@ export default function FranquiaDialog({ open, franquia, onClose, onSuccess }) {
         <Button 
           variant="contained" 
           onClick={handleSubmit}
-          disabled={isLoading}
+          disabled={isLoading || !isAdmin}
           startIcon={isLoading ? <CircularProgress size={20} color="inherit" /> : <SaveIcon />}
           color="primary"
         >
