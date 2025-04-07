@@ -167,8 +167,6 @@ export default function Licitacoes() {
   const [licitacoes, setLicitacoes] = useState([]);
   const [clientes, setClientes] = useState([]);
   const [loading, setLoading] = useState(false);
-  const [anchorEl, setAnchorEl] = useState(null);
-  const [selectedLicitacao, setSelectedLicitacao] = useState(null);
   const [clienteSearch, setClienteSearch] = useState('');
   const [error, setError] = useState(null);
   const [exportMenuAnchorEl, setExportMenuAnchorEl] = useState(null);
@@ -207,7 +205,7 @@ export default function Licitacoes() {
   };
 
   const handleExcluir = async (id) => {
-    if (window.confirm('Tem certeza que deseja excluir esta licitação?')) {
+    if (window.confirm('Tem certeza que deseja excluir esta licitação? Esta é a forma recomendada de cancelar uma licitação. Uma vez excluída, a licitação será removida permanentemente do sistema.')) {
       setLoading(true);
       setError(null);
       try {
@@ -285,37 +283,6 @@ export default function Licitacoes() {
 
   const handleNovaLicitacao = () => {
     navigate('/licitacoes/nova');
-  };
-
-  const handleMenuClick = (event, licitacao) => {
-    setAnchorEl(event.currentTarget);
-    setSelectedLicitacao(licitacao);
-  };
-
-  const handleMenuClose = () => {
-    setAnchorEl(null);
-    setSelectedLicitacao(null);
-  };
-
-  const handleStatusChange = async (novoStatus) => {
-    setLoading(true);
-    setError(null);
-    try {
-      await licitacaoService.atualizarLicitacao(selectedLicitacao.id, {
-        ...selectedLicitacao,
-        status: novoStatus
-      });
-      
-      toast.success('Status atualizado com sucesso');
-      carregarDados();
-    } catch (error) {
-      console.error('Erro ao atualizar status:', error);
-      setError(error.message || 'Erro ao atualizar status');
-      toast.error('Erro ao atualizar status');
-    } finally {
-      handleMenuClose();
-      setLoading(false);
-    }
   };
 
   const clientesFiltrados = clientes
@@ -504,9 +471,6 @@ export default function Licitacoes() {
               }
               size="small"
             />
-            <IconButton size="small" onClick={(e) => handleMenuClick(e, licitacao)}>
-              <MoreVertIcon />
-            </IconButton>
           </Box>
         </Box>
 
@@ -576,14 +540,6 @@ export default function Licitacoes() {
               <DeleteIcon />
             </IconButton>
           </Tooltip>
-      <Tooltip title="Mais opções">
-        <IconButton
-          size="small"
-          onClick={(e) => handleMenuClick(e, licitacao)}
-        >
-          <MoreVertIcon />
-        </IconButton>
-      </Tooltip>
     </Box>
   );
 
@@ -847,22 +803,6 @@ export default function Licitacoes() {
             )}
           </>
         )}
-
-        <Menu
-          anchorEl={anchorEl}
-          open={Boolean(anchorEl)}
-          onClose={handleMenuClose}
-        >
-          {statusLicitacao.map((status) => (
-            <MenuItem
-              key={status}
-              onClick={() => handleStatusChange(status)}
-              selected={selectedLicitacao?.status === status}
-            >
-              {getStatusDisplay(status)}
-            </MenuItem>
-          ))}
-        </Menu>
 
         <Snackbar 
           open={!!error} 

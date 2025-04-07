@@ -209,7 +209,7 @@ const DocumentosRequisitos = ({ licitacaoId, licitacaoStatus }) => {
     try {
       setLoading(true);
       
-      await documentoService.excluirRequisito(currentRequisito.id);
+      await documentoService.excluirRequisitoDocumentacao(currentRequisito.id);
       
       toast.success('Requisito excluído com sucesso!');
       setOpenDeleteDialog(false);

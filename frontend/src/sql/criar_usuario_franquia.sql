@@ -1,92 +1,96 @@
 -- Função para criar um usuário para uma franquia existente
+-- Versão melhorada com verificação de usuários excluídos com soft delete
 CREATE OR REPLACE FUNCTION public.criar_usuario_para_franquia(
     p_franquia_id UUID,
     p_email VARCHAR,
-    p_senha VARCHAR,
-    p_nome VARCHAR DEFAULT NULL
-)
-RETURNS jsonb
-LANGUAGE plpgsql
-SECURITY DEFINER
-AS $$
+    p_senha VARCHAR
+) RETURNS JSONB AS $$
 DECLARE
+    v_franquia_record RECORD;
     v_user_id UUID;
-    v_franquia_nome VARCHAR;
-    v_email VARCHAR;
+    v_result JSONB;
+    v_error TEXT;
+    v_deleted_email VARCHAR := 'deleted_' || p_email;
 BEGIN
-    -- Verificar se a franquia existe
-    IF NOT EXISTS (SELECT 1 FROM public.franquias WHERE id = p_franquia_id) THEN
-        RETURN jsonb_build_object(
-            'sucesso', false,
-            'mensagem', 'Franquia não encontrada'
-        );
+    -- Verifica se a franquia existe
+    SELECT * INTO v_franquia_record FROM public.franquias WHERE id = p_franquia_id;
+    IF NOT FOUND THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Franquia não encontrada');
     END IF;
-
-    -- Verificar se já existe um usuário com o mesmo email
+    
+    -- Verifica se já existe um usuário com este email
     IF EXISTS (SELECT 1 FROM auth.users WHERE email = p_email) THEN
+        RETURN jsonb_build_object('success', false, 'error', 'Email já está em uso');
+    END IF;
+    
+    -- Verifica se existe um usuário excluído com soft delete (email = 'deleted_[email]')
+    -- Se existir, podemos reutilizá-lo revertendo o soft delete
+    IF EXISTS (SELECT 1 FROM auth.users WHERE email = v_deleted_email) THEN
+        -- Encontrou um usuário que foi excluído com soft delete
+        SELECT id INTO v_user_id FROM auth.users WHERE email = v_deleted_email;
+        
+        -- Restaura o usuário
+        UPDATE auth.users
+        SET 
+            email = p_email,
+            encrypted_password = crypt(p_senha, gen_salt('bf')),
+            email_confirmed_at = NOW(),
+            banned_until = NULL,
+            raw_app_meta_data = jsonb_set(
+                COALESCE(raw_app_meta_data, '{}'::jsonb) - 'deletedAt',
+                '{provider}',
+                '"email"'
+            ),
+            raw_user_meta_data = jsonb_set(
+                COALESCE(raw_user_meta_data, '{}'::jsonb) - 'deletedAt',
+                '{full_name}',
+                to_jsonb(v_franquia_record.nome)
+            ),
+            updated_at = NOW()
+        WHERE id = v_user_id;
+        
+        -- Associa o ID do usuário restaurado à franquia
+        UPDATE public.franquias SET user_id = v_user_id WHERE id = p_franquia_id;
+        
         RETURN jsonb_build_object(
-            'sucesso', false,
-            'mensagem', 'Já existe um usuário com este email'
+            'success', true, 
+            'user_id', v_user_id, 
+            'reactivated', true
         );
     END IF;
-
-    -- Obter informações da franquia
-    SELECT nome, email 
-    INTO v_franquia_nome, v_email
-    FROM public.franquias 
-    WHERE id = p_franquia_id;
-
-    -- Se o nome do responsável não foi fornecido, usar o nome da franquia
-    IF p_nome IS NULL OR p_nome = '' THEN
-        p_nome := v_franquia_nome;
-    END IF;
-
-    -- Utilizar o email da franquia se não for fornecido
-    IF p_email IS NULL OR p_email = '' THEN
-        p_email := v_email;
-    END IF;
-
-    -- Criar o usuário
+    
+    -- Não existe usuário com este email, criar um novo
     INSERT INTO auth.users (
         email,
-        encrypted_password,
-        email_confirmed_at,
-        raw_app_meta_data,
-        raw_user_meta_data
+        raw_user_meta_data,
+        role
     ) VALUES (
         p_email,
-        crypt(p_senha, gen_salt('bf')),
-        now(),
-        '{"provider":"email","providers":["email"],"role":"franquia"}'::jsonb,
-        jsonb_build_object('nome', p_nome)
+        jsonb_build_object('full_name', v_franquia_record.nome),
+        'franquia'
     )
     RETURNING id INTO v_user_id;
-
-    -- Atualizar user_id na franquia (de forma segura)
+    
+    -- Associa o ID do usuário à franquia
+    UPDATE public.franquias SET user_id = v_user_id WHERE id = p_franquia_id;
+    
+    -- Define a senha do usuário
     BEGIN
-        UPDATE public.franquias
-        SET user_id = v_user_id
-        WHERE id = p_franquia_id;
+        UPDATE auth.users
+        SET encrypted_password = crypt(p_senha, gen_salt('bf'))
+        WHERE id = v_user_id;
     EXCEPTION WHEN OTHERS THEN
-        -- Se falhar ao atualizar franquia, ainda retornar sucesso na criação do usuário
-        RETURN jsonb_build_object(
-            'sucesso', true,
-            'mensagem', 'Usuário criado, mas não foi possível associá-lo à franquia',
-            'user_id', v_user_id,
-            'franquia_id', p_franquia_id
-        );
+        v_error := SQLERRM;
+        RETURN jsonb_build_object('success', false, 'error', v_error);
     END;
-
-    RETURN jsonb_build_object(
-        'sucesso', true,
-        'mensagem', 'Usuário da franquia criado com sucesso',
-        'user_id', v_user_id,
-        'franquia_id', p_franquia_id
-    );
-EXCEPTION WHEN OTHERS THEN
-    RETURN jsonb_build_object(
-        'sucesso', false,
-        'mensagem', 'Erro ao criar usuário para franquia: ' || SQLERRM
-    );
+    
+    -- Confirma o email do usuário
+    UPDATE auth.users SET email_confirmed_at = NOW() WHERE id = v_user_id;
+    
+    RETURN jsonb_build_object('success', true, 'user_id', v_user_id, 'new_user', true);
+EXCEPTION
+    WHEN OTHERS THEN
+        v_error := SQLERRM;
+        RETURN jsonb_build_object('success', false, 'error', v_error);
 END;
-$$; 
+$$ LANGUAGE plpgsql SECURITY DEFINER; 

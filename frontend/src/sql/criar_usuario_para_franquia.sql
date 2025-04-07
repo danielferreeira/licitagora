@@ -162,4 +162,25 @@ EXCEPTION WHEN OTHERS THEN
         'sqlstate', SQLSTATE
     );
 END;
+$$;
+
+-- Criar uma vista segura para verificar usuários
+-- Esta vista expõe apenas os emails dos usuários, sem dados sensíveis
+CREATE OR REPLACE VIEW public.usuarios_view AS
+SELECT email
+FROM auth.users;
+
+-- Criar ou substituir a função para verificar se um usuário existe
+CREATE OR REPLACE FUNCTION public.check_user_exists(p_email TEXT)
+RETURNS BOOLEAN
+LANGUAGE plpgsql
+SECURITY DEFINER
+SET search_path = public
+AS $$
+BEGIN
+  RETURN EXISTS (SELECT 1 FROM auth.users WHERE email = p_email);
+EXCEPTION WHEN OTHERS THEN
+  RAISE WARNING 'Erro ao verificar usuário: %', SQLERRM;
+  RETURN FALSE;
+END;
 $$; 

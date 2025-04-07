@@ -1,7 +1,7 @@
 {
   "name": "frontend",
   "private": true,
-  "version": "0.0.0",
+  "version": "0.1.0",
   "type": "module",
   "scripts": {
     "dev": "vite",
@@ -16,7 +16,10 @@
     "testar-requisitos": "node scripts/run-sql.js src/sql/testar_requisitos.sql",
     "corrigir-exclusao-documentos": "node scripts/run-sql.js src/sql/corrigir_exclusao_documentos.sql",
     "verificar-processamento-requisitos": "node scripts/run-sql.js src/sql/verificar_processamento_requisitos.sql",
-    "atualizar-clientes-cnaes": "node scripts/run-sql.js src/sql/atualizar_tabela_clientes_cnaes.sql"
+    "atualizar-clientes-cnaes": "node scripts/run-sql.js src/sql/atualizar_tabela_clientes_cnaes.sql",
+    "apply-verificacao-usuarios": "supabase-js-cli sql < src/sql/verificacao_usuarios.sql",
+    "aplicar-melhorias": "bash scripts/aplicar_melhorias_usuarios.sh",
+    "verificar-usuarios": "node scripts/verificar_usuarios.js"
   },
   "dependencies": {
     "@emotion/react": "^11.11.4",
@@ -26,7 +29,6 @@
     "@mui/icons-material": "^5.15.11",
     "@mui/material": "^5.15.11",
     "@mui/x-date-pickers": "^6.20.2",
-    "@supabase/supabase-js": "^2.49.1",
     "@types/react-big-calendar": "^1.16.1",
     "axios": "^1.6.7",
     "date-fns": "^2.30.0",
@@ -39,9 +41,11 @@
     "react-toastify": "^10.0.4"
   },
   "devDependencies": {
+    "@supabase/supabase-js": "^2.49.1",
     "@types/react": "^18.2.61",
     "@types/react-dom": "^18.2.19",
     "@vitejs/plugin-react": "^4.2.1",
+    "dotenv": "^16.4.7",
     "eslint": "^8.57.0",
     "eslint-plugin-react-hooks": "^4.6.0",
     "eslint-plugin-react-refresh": "^0.4.5",

@@ -44,9 +44,9 @@ import {
   Download as DownloadIcon,
   Refresh as RefreshIcon,
 } from '@mui/icons-material';
-import NovoClienteDialog from '../../components/NovoClienteDialog';
-import EditarClienteDialog from '../../components/EditarClienteDialog';
-import VisualizarClienteDialog from '../../components/VisualizarClienteDialog';
+import NovoClienteDialog from '../../components/NovoClienteDialog/NovoClienteDialog';
+import EditarClienteDialog from '../../components/EditarClienteDialog/EditarClienteDialog';
+import VisualizarClienteDialog from '../../components/VisualizarClienteDialog/VisualizarClienteDialog';
 import { toast } from 'react-toastify';
 import { clienteService } from '../../services/supabase';
 

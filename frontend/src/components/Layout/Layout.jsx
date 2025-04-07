@@ -29,7 +29,7 @@ import {
   Logout as LogoutIcon,
 } from '@mui/icons-material';
 import { useNavigate, useLocation, Outlet } from 'react-router-dom';
-import { authService } from '../../services/supabase';
+import { authService } from '../../services/api';
 import { toast } from 'react-toastify';
 
 const drawerWidth = 280;
@@ -106,23 +106,6 @@ export default function Layout() {
         backgroundColor: theme.palette.background.default
       }}
     >
-      <AppBar
-        position="fixed"
-        elevation={0}
-        sx={{
-          zIndex: theme.zIndex.drawer + 1,
-          transition: 'all 0.3s ease-in-out',
-          backdropFilter: 'blur(8px)',
-          backgroundColor: 'rgba(255, 255, 255, 0.9)',
-          width: '100%',
-          ...(open && !isMobile && {
-            marginLeft: drawerWidth,
-            width: `calc(100% - ${drawerWidth}px)`,
-          }),
-        }}
-      >
-      </AppBar>
-
       <Drawer
         variant={isMobile ? 'temporary' : 'permanent'}
         open={open}

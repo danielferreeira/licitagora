@@ -10,8 +10,19 @@ import {
   CircularProgress,
   Typography,
   FormHelperText,
-  Alert
+  Alert,
+  Box,
+  IconButton,
+  Tooltip,
+  Divider,
+  InputAdornment
 } from '@mui/material';
+import { 
+  Close as CloseIcon,
+  Search as SearchIcon, 
+  Business as BusinessIcon,
+  Save as SaveIcon
+} from '@mui/icons-material';
 import { toast } from 'react-toastify';
 import { franquiaService, authService } from '../../services/supabase';
 import { formatarCNPJ, formatarTelefone } from '../../utils/formatters';
@@ -228,146 +239,204 @@ export default function FranquiaDialog({ open, franquia, onClose, onSuccess }) {
       onClose={onClose} 
       maxWidth="md" 
       fullWidth
+      PaperProps={{
+        sx: {
+          borderRadius: '8px',
+          overflow: 'hidden'
+        }
+      }}
     >
-      <DialogTitle sx={{ pb: 0 }}>
-        {franquia ? "Editar Franquia" : "Cadastrar Nova Franquia"}
+      <DialogTitle 
+        sx={{ 
+          display: 'flex', 
+          justifyContent: 'space-between', 
+          alignItems: 'center',
+          borderBottom: '1px solid',
+          borderColor: 'divider',
+          px: 3,
+          py: 2
+        }}
+      >
+        <Box sx={{ display: 'flex', alignItems: 'center' }}>
+          <BusinessIcon sx={{ mr: 1, color: 'primary.main' }} />
+          <Typography variant="h6" component="span">
+            {franquia ? "Editar Franquia" : "Cadastrar Nova Franquia"}
+          </Typography>
+        </Box>
+        <Tooltip title="Fechar">
+          <IconButton edge="end" color="inherit" onClick={onClose} aria-label="fechar">
+            <CloseIcon />
+          </IconButton>
+        </Tooltip>
       </DialogTitle>
-      <DialogContent sx={{ pt: 2 }}>
-        {!franquia && (
-          <Alert severity="info" sx={{ mb: 2 }}>
-            O administrador atual será automaticamente definido como o responsável pela franquia.
-            Após criar a franquia, você poderá criar um usuário para acesso ao sistema.
-          </Alert>
-        )}
-        <Grid container spacing={2}>
-          <Grid item xs={12} md={6}>
-            <TextField
-              fullWidth
-              label="Nome da Franquia"
-              name="nome"
-              value={formData.nome}
-              onChange={handleChange}
-              margin="normal"
-              error={!!formErrors.nome}
-              helperText={formErrors.nome}
-              required
-            />
+      
+      <DialogContent sx={{ px: 3, py: 2 }}>
+        <Box sx={{ pt: 1 }}>
+          {!franquia && (
+            <Alert severity="info" sx={{ mb: 3, '& .MuiAlert-message': { width: '100%' } }}>
+              <Typography variant="body1" fontWeight="medium">
+                Cadastro de nova franquia
+              </Typography>
+              <Typography variant="body2" sx={{ mt: 0.5 }}>
+                O email informado abaixo é apenas para contato e não cria automaticamente um usuário de acesso.
+                Após criar a franquia, você poderá criar um usuário de acesso utilizando o botão "Criar Usuário"
+                que aparecerá na listagem.
+              </Typography>
+            </Alert>
+          )}
+          
+          <Grid container spacing={2}>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Nome da Franquia"
+                name="nome"
+                value={formData.nome}
+                onChange={handleChange}
+                margin="normal"
+                error={!!formErrors.nome}
+                helperText={formErrors.nome}
+                required
+                InputProps={{
+                  startAdornment: (
+                    <InputAdornment position="start">
+                      <BusinessIcon fontSize="small" color="action" />
+                    </InputAdornment>
+                  ),
+                }}
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="CNPJ"
+                name="cnpj"
+                value={formData.cnpj}
+                onChange={handleChange}
+                margin="normal"
+                error={!!formErrors.cnpj}
+                helperText={formErrors.cnpj}
+                required
+                placeholder="00.000.000/0000-00"
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Email"
+                name="email"
+                type="email"
+                value={formData.email}
+                onChange={handleChange}
+                margin="normal"
+                error={!!formErrors.email}
+                helperText={franquia ? (formErrors.email || "Não é possível alterar o email de uma franquia existente") : formErrors.email}
+                required
+                disabled={!!franquia} // Não permite editar email de franquia existente
+              />
+            </Grid>
+            <Grid item xs={12} md={6}>
+              <TextField
+                fullWidth
+                label="Telefone"
+                name="telefone"
+                value={formData.telefone}
+                onChange={handleChange}
+                margin="normal"
+                placeholder="(00) 00000-0000"
+              />
+            </Grid>
+            
+            <Grid item xs={12}>
+              <Divider sx={{ my: 1 }} />
+              <Typography variant="subtitle1" sx={{ mt: 2, mb: 1, display: 'flex', alignItems: 'center' }}>
+                <SearchIcon sx={{ mr: 1, fontSize: '1.2rem' }} />
+                Endereço
+              </Typography>
+            </Grid>
+            
+            <Grid item xs={12} md={4}>
+              <TextField
+                fullWidth
+                label="CEP"
+                name="cep"
+                value={formData.cep}
+                onChange={handleChange}
+                onBlur={(e) => buscarCep(e.target.value)}
+                margin="normal"
+                placeholder="00000-000"
+                helperText="Digite o CEP para auto-preencher o endereço"
+              />
+            </Grid>
+            <Grid item xs={12} md={8}>
+              <TextField
+                fullWidth
+                label="Endereço"
+                name="endereco"
+                value={formData.endereco}
+                onChange={handleChange}
+                margin="normal"
+              />
+            </Grid>
+            <Grid item xs={12} md={2}>
+              <TextField
+                fullWidth
+                label="Número"
+                name="numero"
+                value={formData.numero}
+                onChange={handleChange}
+                margin="normal"
+              />
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <TextField
+                fullWidth
+                label="Bairro"
+                name="bairro"
+                value={formData.bairro}
+                onChange={handleChange}
+                margin="normal"
+              />
+            </Grid>
+            <Grid item xs={12} md={4}>
+              <TextField
+                fullWidth
+                label="Cidade"
+                name="cidade"
+                value={formData.cidade}
+                onChange={handleChange}
+                margin="normal"
+              />
+            </Grid>
+            <Grid item xs={12} md={2}>
+              <TextField
+                fullWidth
+                label="Estado"
+                name="estado"
+                value={formData.estado}
+                onChange={handleChange}
+                margin="normal"
+              />
+            </Grid>
           </Grid>
-          <Grid item xs={12} md={6}>
-            <TextField
-              fullWidth
-              label="CNPJ"
-              name="cnpj"
-              value={formData.cnpj}
-              onChange={handleChange}
-              margin="normal"
-              error={!!formErrors.cnpj}
-              helperText={formErrors.cnpj}
-              required
-            />
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <TextField
-              fullWidth
-              label="Email"
-              name="email"
-              type="email"
-              value={formData.email}
-              onChange={handleChange}
-              margin="normal"
-              error={!!formErrors.email}
-              helperText={formErrors.email}
-              required
-              disabled={!!franquia} // Não permite editar email de franquia existente
-            />
-          </Grid>
-          <Grid item xs={12} md={6}>
-            <TextField
-              fullWidth
-              label="Telefone"
-              name="telefone"
-              value={formData.telefone}
-              onChange={handleChange}
-              margin="normal"
-            />
-          </Grid>
-          <Grid item xs={12}>
-            <Typography variant="subtitle1" sx={{ mt: 2 }}>
-              Endereço
-            </Typography>
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <TextField
-              fullWidth
-              label="CEP"
-              name="cep"
-              value={formData.cep}
-              onChange={handleChange}
-              onBlur={(e) => buscarCep(e.target.value)}
-              margin="normal"
-            />
-          </Grid>
-          <Grid item xs={12} md={8}>
-            <TextField
-              fullWidth
-              label="Endereço"
-              name="endereco"
-              value={formData.endereco}
-              onChange={handleChange}
-              margin="normal"
-            />
-          </Grid>
-          <Grid item xs={12} md={2}>
-            <TextField
-              fullWidth
-              label="Número"
-              name="numero"
-              value={formData.numero}
-              onChange={handleChange}
-              margin="normal"
-            />
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <TextField
-              fullWidth
-              label="Bairro"
-              name="bairro"
-              value={formData.bairro}
-              onChange={handleChange}
-              margin="normal"
-            />
-          </Grid>
-          <Grid item xs={12} md={4}>
-            <TextField
-              fullWidth
-              label="Cidade"
-              name="cidade"
-              value={formData.cidade}
-              onChange={handleChange}
-              margin="normal"
-            />
-          </Grid>
-          <Grid item xs={12} md={2}>
-            <TextField
-              fullWidth
-              label="Estado"
-              name="estado"
-              value={formData.estado}
-              onChange={handleChange}
-              margin="normal"
-            />
-          </Grid>
-        </Grid>
+        </Box>
       </DialogContent>
-      <DialogActions sx={{ px: 3, pb: 2 }}>
-        <Button onClick={onClose} disabled={isLoading}>
+      
+      <DialogActions sx={{ px: 3, py: 2, borderTop: '1px solid', borderColor: 'divider' }}>
+        <Button 
+          onClick={onClose} 
+          disabled={isLoading}
+          variant="outlined"
+          startIcon={<CloseIcon />}
+        >
           Cancelar
         </Button>
         <Button 
           variant="contained" 
           onClick={handleSubmit}
           disabled={isLoading}
-          startIcon={isLoading ? <CircularProgress size={20} /> : null}
+          startIcon={isLoading ? <CircularProgress size={20} color="inherit" /> : <SaveIcon />}
+          color="primary"
         >
           {isLoading ? "Salvando..." : "Salvar"}
         </Button>

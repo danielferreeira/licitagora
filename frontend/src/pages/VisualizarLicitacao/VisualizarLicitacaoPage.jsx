@@ -495,7 +495,7 @@ export default function VisualizarLicitacao() {
         <DialogTitle>Confirmar Exclusão</DialogTitle>
         <DialogContent>
           <DialogContentText>
-            Tem certeza que deseja excluir esta licitação? Esta ação não pode ser desfeita.
+            Tem certeza que deseja excluir esta licitação? Esta é a forma recomendada de cancelar uma licitação. Uma vez excluída, a licitação será removida permanentemente do sistema e esta ação não pode ser desfeita.
           </DialogContentText>
         </DialogContent>
         <DialogActions>

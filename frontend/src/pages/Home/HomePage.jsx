@@ -13,6 +13,7 @@ import { format, isAfter, isBefore, addDays, differenceInDays } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { toast } from 'react-toastify';
 import { clienteService, licitacaoService } from '../../services/supabase';
+import { verificarPermissaoAdmin } from '../../services/api/utils';
 
 export default function Home() {
   const theme = useTheme();
@@ -32,58 +33,105 @@ export default function Home() {
 
   useEffect(() => {
     carregarDados();
+    
+    // Verificação admin
+    const verificarAdmin = async () => {
+      try {
+        // Verificar se o usuário é admin
+        await verificarPermissaoAdmin();
+      } catch (error) {
+        console.warn('Erro ao verificar permissão admin:', error);
+      }
+    };
+
+    verificarAdmin();
+    
+    // Intervalo para atualizar os dados a cada 5 minutos
+    const interval = setInterval(() => {
+      if (navigator.onLine) {
+        carregarDados();
+      }
+    }, 300000);
+    
+    return () => clearInterval(interval);
   }, []);
 
   const carregarDados = async () => {
     try {
       setLoading(true);
-      // Buscar clientes e licitações simultaneamente
-      const [clientes, licitacoes] = await Promise.all([
-        clienteService.listarClientes(),
-        licitacaoService.listarLicitacoes()
-      ]);
+      
+      // Primeiro verificar se o navegador está online
+      if (!navigator.onLine) {
+        throw new Error('Sem conexão com a internet. Verifique sua conexão e tente novamente.');
+      }
+      
+      console.log('Iniciando busca de dados...');
+      
+      // Dados de clientes
+      let clientes = [];
+      try {
+        clientes = await clienteService.listarClientes();
+        console.log(`${clientes.length} clientes carregados`);
+      } catch (clienteErr) {
+        console.error('Erro ao carregar clientes:', clienteErr);
+      }
+      
+      // Dados de licitações
+      let licitacoesRaw = [];
+      try {
+        licitacoesRaw = await licitacaoService.listarLicitacoes();
+        console.log(`${licitacoesRaw.length} licitações carregadas`);
+      } catch (licitacaoErr) {
+        console.error('Erro ao carregar licitações:', licitacaoErr);
+      }
+      
+      // Garantir que temos arrays para trabalhar
+      const licitacoes = Array.isArray(licitacoesRaw) ? licitacoesRaw : [];
       
       const hoje = new Date();
       
       // Calcular licitações em andamento
       const licitacoesAndamento = licitacoes.filter(licitacao => 
-        licitacao.status === 'EM_ANDAMENTO'
+        licitacao && licitacao.status === 'EM_ANDAMENTO'
       );
 
       // Calcular licitações finalizadas
       const licitacoesFinalizadas = licitacoes.filter(licitacao => 
-        licitacao.status === 'CONCLUIDA'
+        licitacao && licitacao.status === 'CONCLUIDA'
       );
 
       // Calcular licitações em análise (considerando outros status que não sejam EM_ANDAMENTO ou CONCLUIDA)
       const licitacoesAnalise = licitacoes.filter(licitacao => 
-        licitacao.status !== 'EM_ANDAMENTO' && licitacao.status !== 'CONCLUIDA'
+        licitacao && licitacao.status !== 'EM_ANDAMENTO' && licitacao.status !== 'CONCLUIDA'
       );
 
       // Calcular próximos prazos (licitações em andamento que vencem nos próximos 7 dias)
       const proximaSemana = addDays(hoje, 7);
       const proximosPrazos = licitacoes.filter(licitacao => {
-        if (licitacao.status !== 'EM_ANDAMENTO') return false;
-        const dataFim = licitacao.data_fim ? new Date(licitacao.data_fim) : addDays(new Date(licitacao.data_abertura), 30);
+        if (!licitacao || licitacao.status !== 'EM_ANDAMENTO') return false;
+        const dataFim = licitacao.data_fechamento ? new Date(licitacao.data_fechamento) : addDays(new Date(licitacao.data_abertura || hoje), 30);
         return isBefore(dataFim, proximaSemana) && isAfter(dataFim, hoje);
       });
 
       // Ordenar licitações por data de fim e pegar as 5 mais próximas (apenas em andamento e análise)
       const proximasLicitacoes = licitacoes
-        .filter(licitacao => 
-          (licitacao.status === 'EM_ANDAMENTO' || licitacao.status !== 'CONCLUIDA') &&
-          isAfter(licitacao.data_fim ? new Date(licitacao.data_fim) : addDays(new Date(licitacao.data_abertura), 30), hoje)
-        )
+        .filter(licitacao => {
+          if (!licitacao) return false;
+          if (!(licitacao.status === 'EM_ANDAMENTO' || licitacao.status !== 'CONCLUIDA')) return false;
+          
+          const dataFim = licitacao.data_fechamento ? new Date(licitacao.data_fechamento) : addDays(new Date(licitacao.data_abertura || hoje), 30);
+          return isAfter(dataFim, hoje);
+        })
         .sort((a, b) => {
-          const dataFimA = a.data_fim ? new Date(a.data_fim) : addDays(new Date(a.data_abertura), 30);
-          const dataFimB = b.data_fim ? new Date(b.data_fim) : addDays(new Date(b.data_abertura), 30);
+          const dataFimA = a.data_fechamento ? new Date(a.data_fechamento) : addDays(new Date(a.data_abertura || hoje), 30);
+          const dataFimB = b.data_fechamento ? new Date(b.data_fechamento) : addDays(new Date(b.data_abertura || hoje), 30);
           return dataFimA - dataFimB;
         })
         .slice(0, 5);
 
       // Preparar prazos importantes
       const prazosImportantes = proximosPrazos.map(licitacao => {
-        const dataFim = licitacao.data_fim ? new Date(licitacao.data_fim) : addDays(new Date(licitacao.data_abertura), 30);
+        const dataFim = licitacao.data_fechamento ? new Date(licitacao.data_fechamento) : addDays(new Date(licitacao.data_abertura || hoje), 30);
         const diasRestantes = differenceInDays(dataFim, hoje);
         return {
           ...licitacao,
@@ -94,13 +142,13 @@ export default function Home() {
 
       // Calcular licitações com prazos vencidos
       const licitacoesVencidas = licitacoes.filter(licitacao => {
-        if (licitacao.status !== 'EM_ANDAMENTO') return false;
-        const dataFim = licitacao.data_fim ? new Date(licitacao.data_fim) : addDays(new Date(licitacao.data_abertura), 30);
+        if (!licitacao || licitacao.status !== 'EM_ANDAMENTO') return false;
+        const dataFim = licitacao.data_fechamento ? new Date(licitacao.data_fechamento) : addDays(new Date(licitacao.data_abertura || hoje), 30);
         return isBefore(dataFim, hoje);
       });
 
       setDashboardData({
-        clientesAtivos: clientes.length,
+        clientesAtivos: Array.isArray(clientes) ? clientes.length : 0,
         licitacoesAndamento: licitacoesAndamento.length,
         licitacoesFinalizadas: licitacoesFinalizadas.length,
         licitacoesAnalise: licitacoesAnalise.length,
@@ -110,9 +158,11 @@ export default function Home() {
         prazosImportantes,
         licitacoesVencidas
       });
+      
+      console.log('Dados do dashboard carregados com sucesso!');
     } catch (error) {
       console.error('Erro ao carregar dados do dashboard:', error);
-      toast.error('Erro ao carregar dados do dashboard');
+      toast.error(`Erro ao carregar dados do dashboard: ${error.message}`);
     } finally {
       setLoading(false);
     }
@@ -156,6 +206,8 @@ export default function Home() {
   };
 
   const getStatusColor = (licitacao) => {
+    if (!licitacao || !licitacao.status) return '#64748B';
+    
     switch (licitacao.status) {
       case 'EM_ANDAMENTO':
         return '#22C55E';
@@ -175,11 +227,14 @@ export default function Home() {
   };
 
   const getStatusChipColor = (licitacao) => {
+    if (!licitacao) return '#64748B';
+    
     const hoje = new Date();
-    const dataFim = licitacao.data_fim ? new Date(licitacao.data_fim) : addDays(new Date(licitacao.data_abertura), 30);
+    const dataAbertura = licitacao.data_abertura ? new Date(licitacao.data_abertura) : hoje;
+    const dataFim = licitacao.data_fechamento ? new Date(licitacao.data_fechamento) : addDays(dataAbertura, 30);
     const diasRestantes = differenceInDays(dataFim, hoje);
 
-    if (licitacao.status === 'FINALIZADA') return '#3B82F6';
+    if (licitacao.status === 'FINALIZADA' || licitacao.status === 'CONCLUIDA') return '#3B82F6';
     if (diasRestantes < 0) return '#EF4444';
     if (diasRestantes <= 7) return '#F59E0B';
     return '#22C55E';
@@ -346,10 +401,10 @@ export default function Home() {
                   minHeight: { xs: 300, sm: 400 },
                 }}
               >
-                {dashboardData.proximasLicitacoes.length > 0 ? (
+                {dashboardData.proximasLicitacoes && dashboardData.proximasLicitacoes.length > 0 ? (
                   dashboardData.proximasLicitacoes.map((licitacao) => (
                     <Box
-                      key={licitacao.id}
+                      key={licitacao.id || Math.random()}
                       sx={{
                         p: 2,
                         borderRadius: 1,
@@ -363,16 +418,16 @@ export default function Home() {
                       <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', mb: 1 }}>
                         <Box>
                           <Typography variant="subtitle1" sx={{ fontWeight: 'bold', color: 'text.primary' }}>
-                            {licitacao.numero} - {licitacao.orgao}
+                            {licitacao.numero || 'S/N'} - {licitacao.orgao || 'Cliente ' + (licitacao.cliente_id || 'não identificado')}
                           </Typography>
                           <Typography variant="caption" color="text.secondary">
-                            {licitacao.objeto}
+                            {licitacao.objeto || 'Sem descrição'}
                           </Typography>
                         </Box>
                         <Box sx={{ display: 'flex', gap: 1 }}>
                           <Chip
                             size="small"
-                            label={licitacao.status}
+                            label={licitacao.status || 'Status indefinido'}
                             sx={{
                               bgcolor: `${getStatusColor(licitacao)}15`,
                               color: getStatusColor(licitacao),
@@ -381,7 +436,7 @@ export default function Home() {
                           />
                           <Chip
                             size="small"
-                            label={licitacao.modalidade}
+                            label={licitacao.modalidade || 'Não especificada'}
                             sx={{
                               bgcolor: `${getStatusChipColor(licitacao)}15`,
                               color: getStatusChipColor(licitacao),
@@ -397,7 +452,7 @@ export default function Home() {
                         </Typography>
                         <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
                           <WarningIcon fontSize="small" />
-                          Prazo: {formatarData(licitacao.data_fim)}
+                          Prazo: {formatarData(licitacao.data_fechamento)}
                         </Typography>
                         {licitacao.valor_estimado && (
                           <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5, fontWeight: 'medium' }}>
@@ -445,10 +500,10 @@ export default function Home() {
                   borderColor: 'divider',
                 }}
               >
-                {dashboardData.prazosImportantes.length > 0 ? (
+                {dashboardData.prazosImportantes && dashboardData.prazosImportantes.length > 0 ? (
                   dashboardData.prazosImportantes.map((prazo) => (
                     <Tooltip
-                      key={prazo.id}
+                      key={prazo.id || Math.random()}
                       title={prazo.objeto || 'Sem descrição'}
                       arrow
                     >
@@ -464,7 +519,7 @@ export default function Home() {
                         }}
                       >
                         <Typography variant="subtitle2" sx={{ fontWeight: 'bold', mb: 1 }}>
-                          {prazo.numero} - {prazo.orgao}
+                          {prazo.numero || 'S/N'} - {prazo.orgao || 'Cliente ' + (prazo.cliente_id || 'não identificado')}
                         </Typography>
                         <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                           <Typography variant="caption" sx={{ display: 'flex', alignItems: 'center', gap: 0.5 }}>
@@ -473,7 +528,7 @@ export default function Home() {
                           </Typography>
                           <Chip
                             size="small"
-                            label={`${prazo.diasRestantes} dias`}
+                            label={`${prazo.diasRestantes || 0} dias`}
                             sx={{
                               bgcolor: prazo.diasRestantes <= 3 ? '#EF444415' : '#F59E0B15',
                               color: prazo.diasRestantes <= 3 ? '#EF4444' : '#F59E0B',

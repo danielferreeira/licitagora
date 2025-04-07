@@ -22,9 +22,9 @@ import {
   Email as EmailIcon
 } from '@mui/icons-material';
 import { toast } from 'react-toastify';
-import { authService } from '../../services/supabase';
-import { supabase } from '../../config/supabase';
+import { authService, supabase } from '../../services/api';
 import logoSvg from '../../assets/logo.svg';
+import RecuperarSenhaDialog from '../../components/RecuperarSenhaDialog/RecuperarSenhaDialog';
 
 const Login = () => {
   const navigate = useNavigate();
@@ -41,6 +41,7 @@ const Login = () => {
   const [loading, setLoading] = useState(false);
   const [loginError, setLoginError] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
+  const [recuperarSenhaOpen, setRecuperarSenhaOpen] = useState(false);
   
   const handleChange = (e) => {
     const { name, value } = e.target;
@@ -166,6 +167,14 @@ const Login = () => {
   
   const handleTogglePasswordVisibility = () => {
     setShowPassword(prev => !prev);
+  };
+  
+  const handleOpenRecuperarSenha = () => {
+    setRecuperarSenhaOpen(true);
+  };
+
+  const handleCloseRecuperarSenha = () => {
+    setRecuperarSenhaOpen(false);
   };
   
   return (
@@ -297,49 +306,40 @@ const Login = () => {
                 sx={{ mb: 3 }}
               />
               
+              <Box sx={{ mt: 1, mb: 2, textAlign: 'right' }}>
+                <Link
+                  component="button"
+                  type="button"
+                  variant="body2"
+                  onClick={handleOpenRecuperarSenha}
+                  sx={{ 
+                    cursor: 'pointer',
+                    color: 'primary.main'
+                  }}
+                >
+                  Esqueceu a senha?
+                </Link>
+              </Box>
+              
               <Button
                 type="submit"
                 fullWidth
                 variant="contained"
-                size="large"
                 disabled={loading}
+                size="large"
                 sx={{
+                  mt: 2,
+                  mb: 2,
                   py: 1.5,
-                  textTransform: 'none',
-                  fontSize: '1rem',
-                  fontWeight: 600,
-                  boxShadow: 2,
+                  bgcolor: 'primary.main',
                   '&:hover': {
-                    boxShadow: 4,
+                    bgcolor: 'primary.dark',
                   },
+                  borderRadius: 1
                 }}
               >
-                {loading ? (
-                  <CircularProgress size={24} color="inherit" />
-                ) : (
-                  'Entrar'
-                )}
+                {loading ? <CircularProgress size={24} color="inherit" /> : 'Entrar'}
               </Button>
-              
-              <Box sx={{ mt: 3, textAlign: 'center' }}>
-                <Link
-                  href="#"
-                  variant="body2"
-                  sx={{
-                    textDecoration: 'none',
-                    '&:hover': {
-                      textDecoration: 'underline',
-                    },
-                  }}
-                  onClick={(e) => {
-                    e.preventDefault();
-                    toast.info('Funcionalidade em desenvolvimento');
-                  }}
-                >
-                  Esqueceu sua senha?
-                </Link>
-              </Box>
-              
             </Box>
             
             <Typography 
@@ -356,6 +356,11 @@ const Login = () => {
           </Paper>
         </Fade>
       </Container>
+      
+      <RecuperarSenhaDialog 
+        open={recuperarSenhaOpen} 
+        onClose={handleCloseRecuperarSenha} 
+      />
     </Box>
   );
 };

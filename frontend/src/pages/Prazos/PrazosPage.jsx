@@ -108,16 +108,39 @@ export default function Prazos() {
     setLoading(true);
     setError(null);
     try {
+      console.log('Iniciando carregamento de dados...');
+      
       // Carregar licitações e prazos simultaneamente
-      const [prazosData, licitacoesData] = await Promise.all([
-        prazoService.listarPrazos(),
-        licitacaoService.listarLicitacoes()
-      ]);
+      let prazosData = [];
+      let licitacoesData = [];
+      
+      try {
+        // Tentar carregar prazos
+        prazosData = await prazoService.listarPrazos();
+        console.log('Prazos carregados:', prazosData?.length || 0);
+      } catch (prazosError) {
+        console.error('Erro ao carregar prazos:', prazosError);
+        setError('Erro ao carregar prazos: ' + (prazosError.message || ''));
+      }
+      
+      try {
+        // Tentar carregar licitações independentemente
+        licitacoesData = await licitacaoService.listarLicitacoes();
+        console.log('Licitações carregadas:', licitacoesData?.length || 0);
+      } catch (licitacoesError) {
+        console.error('Erro ao carregar licitações:', licitacoesError);
+        
+        // Se já temos um erro de prazos, adicionar esta informação
+        if (error) {
+          setError(prev => prev + ' | Erro ao carregar licitações: ' + (licitacoesError.message || ''));
+        } else {
+          setError('Erro ao carregar licitações: ' + (licitacoesError.message || ''));
+        }
+      }
+      
+      console.log('Exemplo de prazo:', prazosData && prazosData.length > 0 ? prazosData[0] : 'Nenhum prazo');
 
-      console.log('Licitações carregadas:', licitacoesData?.length || 0);
-      console.log('Prazos carregados:', prazosData?.length || 0);
-
-      // Atualizar lista de licitações
+      // Atualizar lista de licitações mesmo que esteja vazia
       setLicitacoes(licitacoesData || []);
       
       // Criar eventos a partir dos prazos
@@ -145,8 +168,10 @@ export default function Prazos() {
             const licitacaoId = prazo.licitacao_id || prazo.licitacao?.id;
             
             // Verificar se a licitação existe na lista de licitações
-            if (licitacaoId) {
-              const licitacaoExiste = licitacoesData.some(lic => lic.id === licitacaoId);
+            let licitacaoExiste = false;
+            
+            if (licitacaoId && licitacoesData && licitacoesData.length) {
+              licitacaoExiste = licitacoesData.some(lic => lic.id === licitacaoId);
               if (!licitacaoExiste) {
                 console.warn('Licitação não encontrada na lista de licitações:', licitacaoId);
               }
@@ -164,13 +189,14 @@ export default function Prazos() {
               resource: {
                 titulo: prazo.titulo,
                 licitacao_id: licitacaoId,
-                licitacao_numero: prazo.licitacao?.numero,
+                licitacao_numero: prazo.licitacao?.numero || prazo.licitacao_numero,
                 licitacao_orgao: prazo.licitacao?.orgao,
-                licitacao_objeto: prazo.licitacao?.objeto,
+                licitacao_objeto: prazo.licitacao?.objeto || prazo.licitacao_objeto,
                 licitacao_status: prazo.licitacao?.status,
                 observacoes: prazo.observacoes,
                 data_prazo: prazo.data_prazo,
-                tipo: prazo.tipo
+                tipo: prazo.tipo,
+                nome_cliente: prazo.nome_cliente
               }
             };
           } catch (err) {
@@ -309,10 +335,12 @@ export default function Prazos() {
       
       if (novoEvento.id) {
         // Atualizar prazo existente
+        console.log(`Atualizando prazo ${novoEvento.id}`);
         await prazoService.atualizarPrazo(novoEvento.id, dadosPrazo);
         toast.success('Prazo atualizado com sucesso');
       } else {
         // Criar novo prazo
+        console.log('Criando novo prazo');
         await prazoService.criarPrazo(dadosPrazo);
         toast.success('Prazo adicionado com sucesso');
       }
@@ -321,8 +349,15 @@ export default function Prazos() {
       carregarDados();
     } catch (error) {
       console.error('Erro ao salvar prazo:', error);
-      setError('Erro ao salvar prazo: ' + (error.message || ''));
-      toast.error('Erro ao salvar prazo');
+      
+      // Mensagem de erro específica para o problema de coluna não encontrada
+      if (error.message && error.message.includes('atualizado_em')) {
+        setError('A coluna atualizado_em não existe na tabela. Execute o script de migração no banco de dados.');
+        toast.error('Erro de estrutura no banco de dados. Contate o administrador.');
+      } else {
+        setError('Erro ao salvar prazo: ' + (error.message || ''));
+        toast.error('Erro ao salvar prazo');
+      }
     }
   };
 
@@ -358,9 +393,6 @@ export default function Prazos() {
 
     if (event.resource.licitacao_status) {
       switch (event.resource.licitacao_status) {
-        case 'EM_ANALISE':
-          backgroundColor = '#ff9800'; // Laranja
-          break;
         case 'EM_ANDAMENTO':
           backgroundColor = '#2196f3'; // Azul
           break;
@@ -372,6 +404,9 @@ export default function Prazos() {
         case 'FRACASSADA':
         case 'DESERTA':
           backgroundColor = '#f44336'; // Vermelho
+          break;
+        case 'SUSPENSA':
+          backgroundColor = '#ff9800'; // Laranja
           break;
         default:
           break;

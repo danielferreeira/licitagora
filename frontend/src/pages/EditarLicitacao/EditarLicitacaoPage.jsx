@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import NovaLicitacao from '../NovaLicitacao';
+import NovaLicitacao from '../NovaLicitacao/NovaLicitacaoPage';
 import { toast } from 'react-toastify';
 
 export default function EditarLicitacao() {

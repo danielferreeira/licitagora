@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Navigate, useLocation } from 'react-router-dom';
 import { CircularProgress, Box } from '@mui/material';
-import { authService } from '../services/supabase';
+import { authService } from '../services/api';
 import { toast } from 'react-toastify';
 
 /**

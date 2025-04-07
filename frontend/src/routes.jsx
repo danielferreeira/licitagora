@@ -1,32 +1,34 @@
 import React from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
 import ProtectedRoute from './components/ProtectedRoute';
-import Layout from './components/Layout';
+import Layout from './components/Layout/Layout';
 
 // Páginas
-import Login from './pages/Login/index';
-import Home from './pages/Home';
-import Clientes from './pages/Clientes';
-import Licitacoes from './pages/Licitacoes';
-import Documentos from './pages/Documentos';
-import Relatorios from './pages/Relatorios';
-import Prazos from './pages/Prazos';
-import Fechamento from './pages/Fechamento';
-import Financeiro from './pages/Financeiro';
-import NotFound from './pages/NotFound';
-import BuscarLicitacoes from './pages/BuscarLicitacoes';
-import NovaLicitacao from './pages/NovaLicitacao';
-import EditarLicitacao from './pages/EditarLicitacao';
-import VisualizarLicitacao from './pages/VisualizarLicitacao';
-import Franquias from './pages/Franquias';
-import FranquiaClientes from './pages/FranquiaClientes';
+import Login from './pages/Login/LoginPage';
+import Home from './pages/Home/HomePage';
+import Clientes from './pages/Clientes/ClientesPage';
+import Licitacoes from './pages/Licitacoes/LicitacoesPage';
+import Documentos from './pages/Documentos/DocumentosPage';
+import Relatorios from './pages/Relatorios/RelatoriosPage';
+import Prazos from './pages/Prazos/PrazosPage';
+import Fechamento from './pages/Fechamento/FechamentoPage';
+import Financeiro from './pages/Financeiro/FinanceiroPage';
+import NotFound from './pages/NotFound/NotFoundPage';
+import BuscarLicitacoes from './pages/BuscarLicitacoes/BuscarLicitacoesPage';
+import NovaLicitacao from './pages/NovaLicitacao/NovaLicitacaoPage';
+import EditarLicitacao from './pages/EditarLicitacao/EditarLicitacaoPage';
+import VisualizarLicitacao from './pages/VisualizarLicitacao/VisualizarLicitacaoPage';
+import Franquias from './pages/Franquias/FranquiasPage';
+import FranquiaClientes from './pages/FranquiaClientes/FranquiaClientesPage';
 import TestAuth from './TestAuth';
+import RedefinirSenha from './components/RedefinirSenha/RedefinirSenha';
 
 const AppRoutes = () => {
   return (
     <Routes>
       {/* Rota pública */}
       <Route path="/login" element={<Login />} />
+      <Route path="/redefinir-senha" element={<RedefinirSenha />} />
       <Route path="/test-auth" element={<TestAuth />} />
       
       {/* Rotas protegidas */}

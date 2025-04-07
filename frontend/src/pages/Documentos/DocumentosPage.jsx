@@ -282,14 +282,18 @@ export default function Documentos() {
 
     setUploadData(prev => ({ ...prev, uploading: true }));
     try {
-      await documentoService.uploadDocumentoCliente({
+      console.log('Enviando documento para cliente:', clienteSelecionado);
+      const dadosUpload = {
         arquivo: uploadData.arquivo,
-        clienteId: clienteSelecionado,
-        tipoDocumentoId: uploadData.tipo_documento_id,
-        dataValidade: uploadData.data_validade,
+        cliente_id: clienteSelecionado,
+        tipo_documento_id: uploadData.tipo_documento_id,
+        data_validade: uploadData.data_validade,
         observacoes: uploadData.observacoes,
-        nome: uploadData.arquivo.name
-      });
+        nome: uploadData.nome || uploadData.arquivo.name
+      };
+      console.log('Dados de upload documento cliente:', dadosUpload);
+      
+      await documentoService.uploadDocumentoCliente(dadosUpload);
 
       toast.success('Documento enviado com sucesso!');
       setOpenUploadCliente(false);
@@ -330,19 +334,24 @@ export default function Documentos() {
       const licitacaoId = tabValue === 1 ? licitacaoEmAndamentoSelecionada : 
                          tabValue === 2 ? licitacaoConcluidaSelecionada : null;
       
+      console.log('Enviando documento para licitação:', licitacaoId);
+      
       // Verificar se é um edital
       const tipoDocumento = tiposDocumentos.find(tipo => tipo.id === uploadData.tipo_documento_id);
       const isEdital = tipoDocumento?.nome.toLowerCase().includes('edital');
       
-      // Fazer upload do documento
-      const documento = await documentoService.uploadDocumentoLicitacao({
+      const dadosUpload = {
         arquivo: uploadData.arquivo,
-        licitacaoId: licitacaoId,
-        tipoDocumentoId: uploadData.tipo_documento_id,
-        dataValidade: uploadData.data_validade,
+        licitacao_id: licitacaoId,
+        tipo_documento_id: uploadData.tipo_documento_id,
+        data_validade: uploadData.data_validade,
         observacoes: uploadData.observacoes,
         nome: uploadData.nome
-      });
+      };
+      console.log('Dados de upload documento licitação:', dadosUpload);
+      
+      // Fazer upload do documento
+      const documento = await documentoService.uploadDocumentoLicitacao(dadosUpload);
 
       // Fechar o diálogo e limpar os dados
       setOpenUploadLicitacao(false);
@@ -415,6 +424,7 @@ export default function Documentos() {
   const handleExcluirDocumentoCliente = async (id, arquivoUrl) => {
     if (window.confirm('Tem certeza que deseja excluir este documento?')) {
       try {
+        console.log('Excluindo documento do cliente:', { id, arquivoUrl });
         await documentoService.excluirDocumentoCliente(id, arquivoUrl);
         toast.success('Documento excluído com sucesso!');
         carregarDocumentosCliente(clienteSelecionado);
@@ -437,11 +447,43 @@ export default function Documentos() {
       return;
     }
 
-    if (window.confirm(`Tem certeza que deseja excluir este documento?`)) {
+    // Verificar se é um edital para mostrar mensagem diferente
+    let isEdital = false;
+    if (tipoDocumento) {
+      if (typeof tipoDocumento === 'string') {
+        isEdital = tipoDocumento.toLowerCase().includes('edital');
+      } else if (tipoDocumento.nome) {
+        isEdital = tipoDocumento.nome.toLowerCase().includes('edital');
+      }
+    } else {
+      // Se não tiver o tipo, tentar buscar nos documentos carregados
+      const documento = documentosLicitacao.find(doc => doc.id === id);
+      if (documento && documento.tipo_documento) {
+        isEdital = documento.tipo_documento.nome.toLowerCase().includes('edital');
+      }
+    }
+
+    const confirmMessage = isEdital ? 
+      'Tem certeza que deseja excluir este edital? ATENÇÃO: Todos os requisitos extraídos dele também serão excluídos!' :
+      'Tem certeza que deseja excluir este documento?';
+
+    if (window.confirm(confirmMessage)) {
       try {
+        console.log('Excluindo documento da licitação:', { id, arquivoUrl, tipoDocumento });
         await documentoService.excluirDocumentoLicitacao(id, arquivoUrl, tipoDocumento);
         setDocumentosLicitacao(prev => prev.filter(doc => doc.id !== id));
         toast.success('Documento excluído com sucesso!');
+        
+        // Se excluiu um edital, verificar se estamos na aba de requisitos e forçar a atualização
+        if (isEdital && documentosTabValue === 1) {
+          // Forçar atualização da lista de requisitos (ou limpar se todos foram excluídos)
+          const elementId = tabValue === 1 ? 'requisitos-container-andamento' : 'requisitos-container-concluida';
+          const element = document.getElementById(elementId);
+          if (element) {
+            const timestamp = Date.now();
+            element.setAttribute('key', `${tabValue === 1 ? 'andamento' : 'concluida'}-${licitacaoId}-${timestamp}`);
+          }
+        }
       } catch (error) {
         console.error('Erro ao excluir documento:', error);
         toast.error('Erro ao excluir documento');

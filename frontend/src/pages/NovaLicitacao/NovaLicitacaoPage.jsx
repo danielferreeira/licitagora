@@ -70,7 +70,7 @@ export default function NovaLicitacao() {
     data_fim: null,
     valor_estimado: '0,00',
     lucro_estimado: '0,00',
-    status: 'EM_ANALISE',
+    status: 'EM_ANDAMENTO',
     ramos_atividade: [],
     descricao: '',
     requisitos: '',
